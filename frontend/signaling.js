@@ -1,3 +1,19 @@
+const STORAGE_KEY = "landrop_identity";
+
+function loadIdentity() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveIdentity(nodeId, name) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodeId, name }));
+  } catch {}
+}
+
 export class SignalingClient {
   constructor() {
     this.ws = null;
@@ -22,7 +38,15 @@ export class SignalingClient {
 
     this.ws.onopen = () => {
       this.reconnectDelay = 1000;
-      this._send({ type: "join", name: this._generateName(), protocolVersion: 1 });
+      const identity = loadIdentity();
+      const joinMsg = { type: "join", protocolVersion: 1 };
+      if (identity) {
+        joinMsg.nodeId = identity.nodeId;
+        joinMsg.name = identity.name;
+      } else {
+        joinMsg.name = this._generateName();
+      }
+      this._send(joinMsg);
     };
 
     this.ws.onmessage = (event) => {
@@ -61,6 +85,7 @@ export class SignalingClient {
       case "joined":
         this.nodeId = msg.nodeId;
         this.nodeInfo = { id: msg.nodeId, name: msg.name };
+        saveIdentity(msg.nodeId, msg.name);
         this.peers.clear();
         if (msg.peers) {
           for (const p of msg.peers) this.peers.set(p.id, p);

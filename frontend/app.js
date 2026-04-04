@@ -26,6 +26,7 @@ signaling.onPeersUpdate = (peers) => {
 
 signaling.onDisconnect = () => {
   selfInfoEl.textContent = "正在重连...";
+  transfer.cancelAll("signaling_reconnect");
 };
 
 signaling.onOfferFile = (msg) => {
@@ -56,9 +57,14 @@ transfer.onTransferError = (transferId, error) => {
     transfer_in_progress: "对方正忙",
     user_cancelled: "传输已取消",
     ice_timeout: "连接超时",
-    channel_closed: "连接断开",
+    ice_failed: "连接失败",
+    ice_disconnected: "连接断开",
+    channel_closed: "数据通道断开",
     hash_mismatch: "文件校验失败",
     cancelled: "传输已取消",
+    file_too_large: "文件超过大小限制",
+    chunk_timeout: "数据接收超时",
+    signaling_reconnect: "信令重连，传输中断",
   };
   updateTransferStatus(transferId, messages[error] || `传输失败: ${error}`, "error");
 };

@@ -14,6 +14,8 @@ const PROTOCOL_VERSION: u32 = 1;
 #[derive(Deserialize)]
 struct JoinPayload {
     name: Option<String>,
+    #[serde(rename = "nodeId")]
+    node_id: Option<String>,
     #[serde(rename = "protocolVersion")]
     protocol_version: Option<u32>,
 }
@@ -80,8 +82,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         return;
     }
 
-    let node_id = uuid::Uuid::new_v4().to_string();
+    let node_id = join.node_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let name = join.name.unwrap_or_else(crate::name_gen::generate_name);
+
+    // If the client reused an old nodeId, remove stale entry (same device refresh)
+    if state.nodes.remove(&node_id).is_some() {
+        tracing::info!(node_id = %node_id, "移除旧条目（重连）");
+    }
 
     // 3. Send joined response
     let joined = JoinedMsg {
@@ -200,6 +207,25 @@ async fn route_message(state: &Arc<AppState>, from_id: &NodeId, text: &str) {
             return;
         }
     };
+
+    // Validate file size for offer-file messages
+    let msg_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    if msg_type == "offer-file" {
+        if let Some(file_size) = value.get("fileSize").and_then(|v| v.as_u64()) {
+            if file_size > state.max_file_size {
+                let err = ErrorMsg {
+                    msg_type: "error".into(),
+                    code: "file_too_large".into(),
+                    message: format!(
+                        "File size {} exceeds maximum {} bytes",
+                        file_size, state.max_file_size
+                    ),
+                };
+                let _ = state.send_to(from_id, &serde_json::to_string(&err).unwrap());
+                return;
+            }
+        }
+    }
 
     let msg_str = serde_json::to_string(&value).unwrap();
 

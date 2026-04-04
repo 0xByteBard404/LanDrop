@@ -172,6 +172,15 @@ export class FileTransfer {
           this.onTransferError(msg.transferId, msg.error);
         }
         break;
+
+      case "error":
+        if (msg.code === "file_too_large") {
+          if (this.onTransferError) {
+            const tid = msg.message?.match(/transfer/i) ? msg.transferId : null;
+            if (tid) this.onTransferError(tid, "file_too_large");
+          }
+        }
+        break;
     }
   }
 
@@ -185,10 +194,13 @@ export class FileTransfer {
     transfer.pc = pc;
     transfer.state = "connecting";
 
-    // ICE candidate timeout
-    const iceTimer = setTimeout(() => {
-      this.signaling.sendTransferError(peerId, transferId, "ice_timeout");
-      this._cleanup(transferId);
+    // ICE timeout + data channel open timeout
+    const timeout = setTimeout(() => {
+      if (this.activeTransfers.has(transferId)) {
+        this.signaling.sendTransferError(peerId, transferId, "ice_timeout");
+        this._cleanup(transferId);
+        if (this.onTransferError) this.onTransferError(transferId, "ice_timeout");
+      }
     }, 30000);
 
     pc.onicecandidate = (e) => {
@@ -198,8 +210,16 @@ export class FileTransfer {
     };
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-        clearTimeout(iceTimer);
+      const state = pc.iceConnectionState;
+      if (state === "connected" || state === "completed") {
+        clearTimeout(timeout);
+      } else if (state === "failed" || state === "disconnected") {
+        clearTimeout(timeout);
+        if (this.activeTransfers.has(transferId)) {
+          this.signaling.sendTransferError(peerId, transferId, "ice_" + state);
+          this._cleanup(transferId);
+          if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
+        }
       }
     };
 
@@ -220,7 +240,16 @@ export class FileTransfer {
 
     // Wait for data channel to open, then send file
     dataChannel.onopen = async () => {
+      clearTimeout(timeout);
       await this._sendFileData(transferId);
+    };
+
+    dataChannel.onerror = () => {
+      clearTimeout(timeout);
+      if (this.activeTransfers.has(transferId)) {
+        this._cleanup(transferId);
+        if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
+      }
     };
 
     // Handle control messages from receiver
@@ -229,6 +258,14 @@ export class FileTransfer {
         const msg = JSON.parse(e.data);
         this._handleControlMessage(transferId, msg);
       };
+    };
+
+    controlChannel.onerror = () => {
+      clearTimeout(timeout);
+      if (this.activeTransfers.has(transferId)) {
+        this._cleanup(transferId);
+        if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
+      }
     };
 
     // Create and send SDP offer
@@ -339,8 +376,16 @@ export class FileTransfer {
     };
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      const s = pc.iceConnectionState;
+      if (s === "connected" || s === "completed") {
         clearTimeout(iceTimer);
+      } else if (s === "failed" || s === "disconnected") {
+        clearTimeout(iceTimer);
+        if (this.activeTransfers.has(transferId)) {
+          this.signaling.sendTransferError(fromId, transferId, "ice_" + s);
+          this._cleanup(transferId);
+          if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
+        }
       }
     };
 
@@ -354,11 +399,25 @@ export class FileTransfer {
           const msg = JSON.parse(e.data);
           this._handleControlMessage(transferId, msg);
         };
+        channel.onerror = () => {
+          clearTimeout(iceTimer);
+          if (this.activeTransfers.has(transferId)) {
+            this._cleanup(transferId);
+            if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
+          }
+        };
       } else if (channel.label === "file-transfer") {
         channel.binaryType = "arraybuffer";
         transfer.dataChannel = channel;
         channel.onmessage = (e) => {
           this._handleChunk(transferId, e.data);
+        };
+        channel.onerror = () => {
+          clearTimeout(iceTimer);
+          if (this.activeTransfers.has(transferId)) {
+            this._cleanup(transferId);
+            if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
+          }
         };
       }
     };
@@ -495,5 +554,12 @@ export class FileTransfer {
 
   isBusy() {
     return this.activeTransfers.size > 0;
+  }
+
+  cancelAll(reason = "signaling_reconnect") {
+    for (const [transferId] of this.activeTransfers) {
+      this._cleanup(transferId);
+      if (this.onTransferError) this.onTransferError(transferId, reason);
+    }
   }
 }
