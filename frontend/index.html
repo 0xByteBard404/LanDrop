@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LanDrop - 局域网文件传输</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>LanDrop</h1>
+      <div id="self-info"></div>
+    </header>
+
+    <main>
+      <section id="peers-section">
+        <h2>在线设备</h2>
+        <div id="peers-list"></div>
+        <p id="no-peers" class="hint">等待其他设备连接...</p>
+      </section>
+
+      <section id="transfer-section">
+        <h2>传输</h2>
+        <div id="transfers-list"></div>
+        <p id="no-transfers" class="hint">暂无传输任务</p>
+      </section>
+    </main>
+
+    <!-- File offer dialog -->
+    <div id="offer-dialog" class="dialog hidden">
+      <div class="dialog-content">
+        <h3 id="offer-title">接收文件</h3>
+        <p id="offer-file-info"></p>
+        <div class="dialog-actions">
+          <button id="offer-reject" class="btn btn-secondary">拒绝</button>
+          <button id="offer-accept" class="btn btn-primary">接收</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
