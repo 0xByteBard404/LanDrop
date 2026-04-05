@@ -97,6 +97,7 @@ export class FileTransfer {
     // Send queue: only 1 active P2P connection at a time to avoid SCTP congestion
     this._sendQueue = [];
     this._activeSends = 0;
+    this._speedLimit = 0; // bytes/sec, 0 = unlimited
   }
 
   // --- ICE candidate buffering ---
@@ -457,6 +458,7 @@ export class FileTransfer {
       // Send chunks via data channel
       transfer.state = "sending";
       let lastProgressTime = 0;
+      let sendStart = performance.now();
 
       for (let i = 0; i < totalChunks; i++) {
         // Check if transfer was cancelled
@@ -485,6 +487,15 @@ export class FileTransfer {
         }
 
         dataChannel.send(payload.buffer);
+
+        // Speed limit: throttle if sending too fast
+        if (this._speedLimit > 0) {
+          const elapsed = performance.now() - sendStart;
+          const expectedTime = ((i + 1) * CHUNK_SIZE / this._speedLimit) * 1000;
+          if (elapsed < expectedTime) {
+            await new Promise(r => setTimeout(r, expectedTime - elapsed));
+          }
+        }
 
         // Throttled progress (max 4 updates/sec per transfer)
         const now = Date.now();

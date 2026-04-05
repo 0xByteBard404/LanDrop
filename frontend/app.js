@@ -36,6 +36,11 @@ const qrContainer = document.getElementById("qr-container");
 const qrUrlEl = document.getElementById("qr-url");
 const qrCopyBtn = document.getElementById("qr-copy");
 const qrCloseBtn = document.getElementById("qr-close");
+const speedLimitSelect = document.getElementById("speed-limit");
+
+speedLimitSelect.onchange = () => {
+  transfer._speedLimit = parseInt(speedLimitSelect.value);
+};
 const renameDialog = document.getElementById("rename-dialog");
 const renameInput = document.getElementById("rename-input");
 const renameCancelBtn = document.getElementById("rename-cancel");
@@ -207,6 +212,11 @@ function renderPeers(peers) {
     sendBtn.textContent = "发送文件";
     sendBtn.onclick = () => selectAndSend(id);
 
+    const folderBtn = document.createElement("button");
+    folderBtn.className = "btn btn-folder";
+    folderBtn.textContent = "文件夹";
+    folderBtn.onclick = () => selectFolderAndSend(id);
+
     const textBtn = document.createElement("button");
     textBtn.className = "btn-text-link";
     textBtn.textContent = "发送文本";
@@ -270,6 +280,18 @@ async function selectAndSend(peerId) {
   const input = document.createElement("input");
   input.type = "file";
   input.multiple = true;
+  input.onchange = async () => {
+    const files = input.files;
+    if (!files || files.length === 0) return;
+    await sendFilesToPeer(peerId, files);
+  };
+  input.click();
+}
+
+async function selectFolderAndSend(peerId) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.webkitdirectory = true;
   input.onchange = async () => {
     const files = input.files;
     if (!files || files.length === 0) return;

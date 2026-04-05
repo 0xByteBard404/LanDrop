@@ -26,7 +26,15 @@
       </section>
 
       <section id="transfer-section">
-        <h2>传输</h2>
+        <div class="section-header">
+          <h2>传输</h2>
+          <select id="speed-limit" class="speed-select">
+            <option value="0">不限速</option>
+            <option value="1048576">1 MB/s</option>
+            <option value="5242880">5 MB/s</option>
+            <option value="10485760">10 MB/s</option>
+          </select>
+        </div>
         <div id="transfers-list"></div>
         <p id="no-transfers" class="hint">暂无传输任务</p>
       </section>

@@ -316,7 +316,23 @@ h2 {
   align-items: center;
 }
 
-.transfer-status {
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.speed-select {
+  font-size: 12px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  outline: none;
+  cursor: pointer;
+  width: auto;
+}.transfer-status {
   font-size: 12px;
   color: var(--text-dim);
   letter-spacing: 0.2px;
