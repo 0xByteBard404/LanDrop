@@ -701,11 +701,6 @@ export class FileTransfer {
         transfer.fileSize = msg.fileSize;
         transfer.mimeType = msg.mimeType;
         transfer.state = "receiving";
-
-        // Notify media preview
-        if (this.onMediaPreview && (msg.mimeType.startsWith("image/") || msg.mimeType.startsWith("video/"))) {
-          this.onMediaPreview(transferId, msg.fileName, msg.mimeType, transfer.fileSize);
-        }
         break;
 
       case "complete": {
@@ -813,6 +808,9 @@ export class FileTransfer {
         const mimeType = transfer.mimeType || "application/octet-stream";
         if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) {
           transfer._blobUrl = url; // keep blob URL for preview
+          if (this.onMediaPreview) {
+            this.onMediaPreview(transferId, transfer.fileName, mimeType, transfer.fileSize);
+          }
         } else {
           URL.revokeObjectURL(url);
         }
@@ -865,6 +863,13 @@ export class FileTransfer {
     const transfer = this.activeTransfers.get(transferId);
     if (transfer) {
       if (transfer.pc) transfer.pc.close();
+      // Keep transfer data if it has a blob URL for preview
+      if (transfer._blobUrl) {
+        transfer.pc = null;
+        transfer.dataChannel = null;
+        transfer.controlChannel = null;
+        return;
+      }
       this.activeTransfers.delete(transferId);
       // If this was an active send, free the slot
       if (transfer._connectionStarted) {
