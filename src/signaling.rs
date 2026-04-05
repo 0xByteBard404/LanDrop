@@ -235,15 +235,15 @@ async fn route_message(state: &Arc<AppState>, from_id: &NodeId, text: &str) {
         }
     }
 
-    // Validate text length for send-text messages (max 10KB)
+    // Validate text length for send-text messages (max 1MB)
     if msg_type == "send-text" {
         if let Some(content) = value.get("content").and_then(|v| v.as_str()) {
-            if content.len() > 10 * 1024 {
+            if content.len() > 1024 * 1024 {
                 let err = ErrorMsg {
                     msg_type: "error".into(),
                     code: "text_too_long".into(),
                     message: format!(
-                        "Text length {} exceeds maximum 10240 bytes",
+                        "Text length {} exceeds maximum 1048576 bytes",
                         content.len()
                     ),
                 };

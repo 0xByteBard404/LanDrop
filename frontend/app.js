@@ -47,7 +47,7 @@ signaling.onOfferFile = (msg) => {
 
 signaling.onMessage = (msg) => {
   if (msg.type === "error" && msg.code === "text_too_long") {
-    alert("文本超过 10KB 限制");
+    alert("文本超过 1MB 限制");
     return;
   }
   transfer.handleSignalingMessage(msg);
@@ -290,8 +290,8 @@ textComposeInput.onkeydown = (e) => {
 textComposeSendBtn.onclick = () => {
   const content = textComposeInput.value.trim();
   if (!content) return;
-  if (content.length > 10 * 1024) {
-    alert("文本超过 10KB 限制");
+  if (content.length > 1024 * 1024) {
+    alert("文本超过 1MB 限制");
     return;
   }
 
