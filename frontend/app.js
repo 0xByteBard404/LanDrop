@@ -131,7 +131,7 @@ selfInfoEl.addEventListener("click", () => {
   span.innerHTML = "";
   span.appendChild(input);
   input.focus();
-  input.select();
+  input.setSelectionRange(input.value.length, input.value.length);
 
   const finish = () => {
     const newName = input.value.trim();
