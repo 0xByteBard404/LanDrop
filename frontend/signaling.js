@@ -143,10 +143,6 @@ export class SignalingClient {
     this.send({ type: "reject-file", to, transferId, reason });
   }
 
-  sendBusy(to, transferId) {
-    this.send({ type: "busy", to, transferId, reason: "transfer_in_progress" });
-  }
-
   sendCancelTransfer(to, transferId, reason = "user_cancelled") {
     this.send({ type: "cancel-transfer", to, transferId, reason });
   }

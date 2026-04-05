@@ -132,7 +132,6 @@ export class FileTransfer {
         break;
 
       case "reject-file":
-      case "busy":
         if (transfer) {
           this.activeTransfers.delete(msg.transferId);
           if (this.onTransferError) {
@@ -564,10 +563,6 @@ export class FileTransfer {
       this._cleanup(transferId);
       if (this.onTransferError) this.onTransferError(transferId, "cancelled");
     }
-  }
-
-  isBusy() {
-    return this.activeTransfers.size > 0;
   }
 
   cancelAll(reason = "signaling_reconnect") {

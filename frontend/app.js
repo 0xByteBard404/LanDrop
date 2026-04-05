@@ -30,10 +30,6 @@ signaling.onDisconnect = () => {
 };
 
 signaling.onOfferFile = (msg) => {
-  if (transfer.isBusy()) {
-    signaling.sendBusy(msg.from, msg.transferId);
-    return;
-  }
   showOfferDialog(msg);
 };
 
@@ -54,7 +50,6 @@ transfer.onTransferComplete = (transferId) => {
 transfer.onTransferError = (transferId, error) => {
   const messages = {
     user_rejected: "对方拒绝了文件",
-    transfer_in_progress: "对方正忙",
     user_cancelled: "传输已取消",
     ice_timeout: "连接超时",
     ice_failed: "连接失败",
@@ -67,6 +62,7 @@ transfer.onTransferError = (transferId, error) => {
     signaling_reconnect: "信令重连，传输中断",
   };
   updateTransferStatus(transferId, messages[error] || `传输失败: ${error}`, "error");
+  dismissOffer(transferId);
 };
 
 // --- Render peers ---
@@ -105,15 +101,25 @@ function renderPeers(peers) {
 async function selectAndSend(peerId) {
   const input = document.createElement("input");
   input.type = "file";
+  input.multiple = true;
   input.onchange = async () => {
-    const file = input.files[0];
-    if (!file) return;
+    const files = input.files;
+    if (!files || files.length === 0) return;
 
-    try {
-      const transferId = await transfer.sendFile(peerId, file);
-      addTransferCard(transferId, file.name, file.size, "sender");
-    } catch (e) {
-      alert(e.message);
+    // 校验总大小
+    const totalSize = Array.from(files).reduce((sum, f) => sum + f.size, 0);
+    if (totalSize > 512 * 1024 * 1024) {
+      alert(`所选文件总大小 ${formatSize(totalSize)} 超过 512 MB 限制`);
+      return;
+    }
+
+    for (const file of files) {
+      try {
+        const transferId = await transfer.sendFile(peerId, file);
+        addTransferCard(transferId, file.name, file.size, "sender");
+      } catch (e) {
+        alert(`${file.name}: ${e.message}`);
+      }
     }
   };
   input.click();
@@ -121,31 +127,50 @@ async function selectAndSend(peerId) {
 
 // --- Offer dialog ---
 
-let pendingOffer = null;
+const offerQueue = [];
+let showingOffer = false;
+let currentOfferTransferId = null;
 
 function showOfferDialog(msg) {
-  pendingOffer = msg;
+  offerQueue.push(msg);
+  if (!showingOffer) _showNextOffer();
+}
+
+function _showNextOffer() {
+  if (offerQueue.length === 0) {
+    showingOffer = false;
+    currentOfferTransferId = null;
+    offerDialog.classList.add("hidden");
+    return;
+  }
+  showingOffer = true;
+  const msg = offerQueue.shift();
+  currentOfferTransferId = msg.transferId;
   offerTitle.textContent = `${signaling.peers.get(msg.from)?.name || "未知设备"} 想发送文件`;
   offerFileInfo.textContent = `${msg.fileName} (${formatSize(msg.fileSize)})`;
   offerDialog.classList.remove("hidden");
+
+  offerAcceptBtn.onclick = () => {
+    signaling.sendAcceptFile(msg.from, msg.transferId);
+    addTransferCard(msg.transferId, msg.fileName, msg.fileSize, "receiver");
+    _showNextOffer();
+  };
+
+  offerRejectBtn.onclick = () => {
+    signaling.sendRejectFile(msg.from, msg.transferId);
+    _showNextOffer();
+  };
 }
 
-offerAcceptBtn.onclick = () => {
-  if (pendingOffer) {
-    signaling.sendAcceptFile(pendingOffer.from, pendingOffer.transferId);
-    addTransferCard(pendingOffer.transferId, pendingOffer.fileName, pendingOffer.fileSize, "receiver");
-    pendingOffer = null;
+function dismissOffer(transferId) {
+  // Remove from queue
+  const idx = offerQueue.findIndex(m => m.transferId === transferId);
+  if (idx !== -1) offerQueue.splice(idx, 1);
+  // If currently showing this offer, dismiss and show next
+  if (currentOfferTransferId === transferId) {
+    _showNextOffer();
   }
-  offerDialog.classList.add("hidden");
-};
-
-offerRejectBtn.onclick = () => {
-  if (pendingOffer) {
-    signaling.sendRejectFile(pendingOffer.from, pendingOffer.transferId);
-    pendingOffer = null;
-  }
-  offerDialog.classList.add("hidden");
-};
+}
 
 // --- Transfer cards ---
 
