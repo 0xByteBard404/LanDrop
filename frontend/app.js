@@ -16,6 +16,18 @@ const offerTitle = document.getElementById("offer-title");
 const offerFileInfo = document.getElementById("offer-file-info");
 const offerAcceptBtn = document.getElementById("offer-accept");
 const offerRejectBtn = document.getElementById("offer-reject");
+const messagesListEl = document.getElementById("messages-list");
+const noMessagesEl = document.getElementById("no-messages");
+const textComposeDialog = document.getElementById("text-compose-dialog");
+const textComposeTitle = document.getElementById("text-compose-title");
+const textComposeInput = document.getElementById("text-compose-input");
+const textComposeSendBtn = document.getElementById("text-compose-send");
+const textComposeCancelBtn = document.getElementById("text-compose-cancel");
+const textReceiveDialog = document.getElementById("text-receive-dialog");
+const textReceiveTitle = document.getElementById("text-receive-title");
+const textReceiveContent = document.getElementById("text-receive-content");
+const textReceiveCopyBtn = document.getElementById("text-receive-copy");
+const textReceiveCloseBtn = document.getElementById("text-receive-close");
 
 // --- Signaling events ---
 
@@ -34,7 +46,15 @@ signaling.onOfferFile = (msg) => {
 };
 
 signaling.onMessage = (msg) => {
+  if (msg.type === "error" && msg.code === "text_too_long") {
+    alert("文本超过 10KB 限制");
+    return;
+  }
   transfer.handleSignalingMessage(msg);
+};
+
+signaling.onTextReceived = (msg) => {
+  showReceivedText(msg);
 };
 
 // --- Transfer events ---
@@ -90,8 +110,18 @@ function renderPeers(peers) {
     sendBtn.textContent = "发送文件";
     sendBtn.onclick = () => selectAndSend(id);
 
+    const textBtn = document.createElement("button");
+    textBtn.className = "btn-text-link";
+    textBtn.textContent = "发送文本";
+    textBtn.onclick = () => openTextCompose(id, peer.name);
+
+    const btnGroup = document.createElement("div");
+    btnGroup.className = "peer-actions";
+    btnGroup.appendChild(textBtn);
+    btnGroup.appendChild(sendBtn);
+
     card.appendChild(nameSpan);
-    card.appendChild(sendBtn);
+    card.appendChild(btnGroup);
     peersListEl.appendChild(card);
   }
 }
@@ -231,6 +261,114 @@ function updateTransferStatus(transferId, text, className) {
 
   const cancelBtn = card.querySelector(".transfer-cancel");
   if (cancelBtn) cancelBtn.remove();
+}
+
+// --- Text messaging ---
+
+let textComposeTargetId = null;
+
+function openTextCompose(peerId, peerName) {
+  textComposeTargetId = peerId;
+  textComposeTitle.textContent = `发送文本给 ${peerName}`;
+  textComposeInput.value = "";
+  textComposeDialog.classList.remove("hidden");
+  setTimeout(() => textComposeInput.focus(), 50);
+}
+
+textComposeCancelBtn.onclick = () => {
+  textComposeDialog.classList.add("hidden");
+  textComposeTargetId = null;
+};
+
+textComposeInput.onkeydown = (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    textComposeSendBtn.click();
+  }
+};
+
+textComposeSendBtn.onclick = () => {
+  const content = textComposeInput.value.trim();
+  if (!content) return;
+  if (content.length > 10 * 1024) {
+    alert("文本超过 10KB 限制");
+    return;
+  }
+
+  const textId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const peerName = signaling.peers.get(textComposeTargetId)?.name || "未知设备";
+  signaling.sendText(textComposeTargetId, textId, content);
+  addMessageCard(textId, content, "sender", peerName);
+
+  textComposeDialog.classList.add("hidden");
+  textComposeTargetId = null;
+};
+
+function showReceivedText(msg) {
+  const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
+  addMessageCard(msg.textId, msg.content, "receiver", peerName);
+
+  textReceiveTitle.textContent = `来自 ${peerName} 的文本`;
+  textReceiveContent.textContent = msg.content;
+  textReceiveDialog.classList.remove("hidden");
+}
+
+textReceiveCopyBtn.onclick = async () => {
+  const text = textReceiveContent.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    textReceiveCopyBtn.textContent = "已复制";
+    setTimeout(() => { textReceiveCopyBtn.textContent = "复制"; }, 1500);
+  } catch {
+    // Fallback
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    textReceiveCopyBtn.textContent = "已复制";
+    setTimeout(() => { textReceiveCopyBtn.textContent = "复制"; }, 1500);
+  }
+};
+
+textReceiveCloseBtn.onclick = () => {
+  textReceiveDialog.classList.add("hidden");
+};
+
+function addMessageCard(textId, content, role, peerName) {
+  noMessagesEl.style.display = "none";
+
+  const card = document.createElement("div");
+  card.className = `message-card message-${role}`;
+  card.id = `message-${textId}`;
+
+  const preview = content.length > 100 ? content.slice(0, 100) + "..." : content;
+  const arrow = role === "sender" ? "\u2191" : "\u2193";
+  const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+
+  card.innerHTML = `
+    <div class="message-header">
+      <span class="message-direction"><span class="message-arrow">${arrow}</span> ${escapeHtml(peerName)}</span>
+      <span class="message-time">${time}</span>
+    </div>
+    <div class="message-preview">${escapeHtml(preview)}</div>
+  `;
+
+  card.onclick = () => {
+    textReceiveContent.textContent = content;
+    textReceiveTitle.textContent = (role === "sender" ? "发给 " : "来自 ") + peerName;
+    textReceiveCopyBtn.textContent = "复制";
+    textReceiveDialog.classList.remove("hidden");
+  };
+
+  messagesListEl.prepend(card);
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 // --- Utility ---

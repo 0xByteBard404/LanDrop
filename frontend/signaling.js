@@ -22,6 +22,7 @@ export class SignalingClient {
     this.peers = new Map(); // id -> {id, name}
     this.onPeersUpdate = null;
     this.onOfferFile = null;
+    this.onTextReceived = null;
     this.onMessage = null;
     this.onDisconnect = null;
     this.reconnectTimer = null;
@@ -108,6 +109,10 @@ export class SignalingClient {
         if (this.onOfferFile) this.onOfferFile(msg);
         break;
 
+      case "send-text":
+        if (this.onTextReceived) this.onTextReceived(msg);
+        break;
+
       default:
         if (this.onMessage) this.onMessage(msg);
         break;
@@ -161,5 +166,9 @@ export class SignalingClient {
 
   sendIceCandidate(to, transferId, candidate) {
     this.send({ type: "ice-candidate", to, transferId, candidate });
+  }
+
+  sendText(to, textId, content) {
+    this.send({ type: "send-text", to, textId, content });
   }
 }
