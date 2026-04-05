@@ -30,13 +30,90 @@ const textReceiveTitle = document.getElementById("text-receive-title");
 const textReceiveContent = document.getElementById("text-receive-content");
 const textReceiveCopyBtn = document.getElementById("text-receive-copy");
 const textReceiveCloseBtn = document.getElementById("text-receive-close");
+const qrBtn = document.getElementById("qr-btn");
+const qrDialog = document.getElementById("qr-dialog");
+const qrContainer = document.getElementById("qr-container");
+const qrUrlEl = document.getElementById("qr-url");
+const qrCopyBtn = document.getElementById("qr-copy");
+const qrCloseBtn = document.getElementById("qr-close");
+const renameDialog = document.getElementById("rename-dialog");
+const renameInput = document.getElementById("rename-input");
+const renameCancelBtn = document.getElementById("rename-cancel");
+const renameSaveBtn = document.getElementById("rename-save");
+
+// --- Browser notifications ---
+
+function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function showNotification(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (document.visibilityState === "visible") return;
+  try {
+    const n = new Notification(title, { body, icon: "/favicon.ico" });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch {}
+}
+
+requestNotificationPermission();
 
 // --- Signaling events ---
 
 signaling.onPeersUpdate = (peers) => {
   renderPeers(peers);
-  selfInfoEl.textContent = `${signaling.nodeInfo?.name || "连接中..."} (${signaling.nodeId?.slice(0, 8) || "..."})`;
+  updateSelfInfo();
 };
+
+function updateSelfInfo() {
+  const name = signaling.nodeInfo?.name || "连接中...";
+  const id = signaling.nodeId?.slice(0, 8) || "...";
+  selfInfoEl.innerHTML = `${escapeHtml(name)} <span class="self-id">${id}</span>`;
+}
+
+// --- Self-info rename ---
+selfInfoEl.addEventListener("click", () => {
+  if (!signaling.nodeInfo) return;
+  const currentName = signaling.nodeInfo.name;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = currentName;
+  input.className = "rename-input";
+  input.maxLength = 32;
+  input.placeholder = "输入新名称";
+
+  const span = selfInfoEl;
+  const originalHTML = span.innerHTML;
+  span.innerHTML = "";
+  span.appendChild(input);
+  input.focus();
+  input.select();
+
+  const finish = () => {
+    const newName = input.value.trim();
+    if (newName && newName !== currentName && newName.length <= 32) {
+      signaling.nodeInfo.name = newName;
+      signaling.sendRename(newName);
+      // Update session storage
+      try {
+        sessionStorage.setItem("landrop_identity", JSON.stringify({
+          nodeId: signaling.nodeId,
+          name: newName,
+        }));
+      } catch {}
+    }
+    updateSelfInfo();
+  };
+
+  input.addEventListener("blur", finish);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    if (e.key === "Escape") { input.value = currentName; input.blur(); }
+  });
+});
 
 signaling.onDisconnect = () => {
   selfInfoEl.textContent = "正在重连...";
@@ -45,6 +122,8 @@ signaling.onDisconnect = () => {
 
 signaling.onOfferFile = (msg) => {
   showOfferDialog(msg);
+  const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
+  showNotification("收到文件", `${peerName}: ${msg.fileName} (${formatSize(msg.fileSize)})`);
 };
 
 signaling.onMessage = (msg) => {
@@ -57,6 +136,8 @@ signaling.onMessage = (msg) => {
 
 signaling.onTextReceived = (msg) => {
   showReceivedText(msg);
+  const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
+  showNotification("收到文本", `来自 ${peerName}`);
 };
 
 // --- Transfer events ---
@@ -67,6 +148,7 @@ transfer.onProgress = (transferId, current, total) => {
 
 transfer.onTransferComplete = (transferId) => {
   updateTransferStatus(transferId, "传输完成", "success");
+  showNotification("传输完成", "文件已成功传输");
 };
 
 transfer.onTransferError = (transferId, error) => {
@@ -93,6 +175,7 @@ transfer.onSecureTextReceived = (transferId, text, fromId) => {
   textReceiveTitle.textContent = `来自 ${peerName} 的文本 (安全)`;
   textReceiveContent.textContent = text;
   textReceiveDialog.classList.remove("hidden");
+  showNotification("收到安全文本", `来自 ${peerName}`);
 };
 
 transfer.onSecureTextOffer = (fromId, transferId, textPreview) => {
@@ -136,11 +219,52 @@ function renderPeers(peers) {
 
     card.appendChild(nameSpan);
     card.appendChild(btnGroup);
+
+    // Drag-and-drop
+    card.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      card.classList.add("drag-over");
+    });
+    card.addEventListener("dragenter", (e) => {
+      e.preventDefault();
+      card.classList.add("drag-over");
+    });
+    card.addEventListener("dragleave", () => {
+      card.classList.remove("drag-over");
+    });
+    card.addEventListener("drop", (e) => {
+      e.preventDefault();
+      card.classList.remove("drag-over");
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        sendFilesToPeer(id, files);
+      }
+    });
+
     peersListEl.appendChild(card);
   }
 }
 
 // --- File selection ---
+
+async function sendFilesToPeer(peerId, files) {
+  const fileArr = Array.from(files);
+  const totalSize = fileArr.reduce((sum, f) => sum + f.size, 0);
+  if (totalSize > 512 * 1024 * 1024) {
+    alert(`所选文件总大小 ${formatSize(totalSize)} 超过 512 MB 限制`);
+    return;
+  }
+
+  for (const file of fileArr) {
+    try {
+      const transferId = await transfer.sendFile(peerId, file);
+      addTransferCard(transferId, file.name, file.size, "sender");
+    } catch (e) {
+      alert(`${file.name}: ${e.message}`);
+    }
+  }
+}
 
 async function selectAndSend(peerId) {
   const input = document.createElement("input");
@@ -149,22 +273,7 @@ async function selectAndSend(peerId) {
   input.onchange = async () => {
     const files = input.files;
     if (!files || files.length === 0) return;
-
-    // 校验总大小
-    const totalSize = Array.from(files).reduce((sum, f) => sum + f.size, 0);
-    if (totalSize > 512 * 1024 * 1024) {
-      alert(`所选文件总大小 ${formatSize(totalSize)} 超过 512 MB 限制`);
-      return;
-    }
-
-    for (const file of files) {
-      try {
-        const transferId = await transfer.sendFile(peerId, file);
-        addTransferCard(transferId, file.name, file.size, "sender");
-      } catch (e) {
-        alert(`${file.name}: ${e.message}`);
-      }
-    }
+    await sendFilesToPeer(peerId, files);
   };
   input.click();
 }
@@ -409,6 +518,55 @@ function formatSize(bytes) {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
+
+// --- QR code dialog ---
+
+let cachedLanUrl = null;
+
+qrBtn.onclick = async () => {
+  qrContainer.innerHTML = "";
+  try {
+    if (!cachedLanUrl) {
+      const res = await fetch("/api/info");
+      const data = await res.json();
+      cachedLanUrl = data.url || location.href;
+    }
+    qrUrlEl.textContent = cachedLanUrl;
+    new QRCode(qrContainer, {
+      text: cachedLanUrl,
+      width: 200,
+      height: 200,
+      colorDark: "#e8e4df",
+      colorLight: "#1a1a1e",
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  } catch {
+    qrUrlEl.textContent = location.href;
+  }
+  qrDialog.classList.remove("hidden");
+};
+
+qrCloseBtn.onclick = () => {
+  qrDialog.classList.add("hidden");
+};
+
+qrCopyBtn.onclick = async () => {
+  const url = cachedLanUrl || location.href;
+  try {
+    await navigator.clipboard.writeText(url);
+    qrCopyBtn.textContent = "已复制";
+    setTimeout(() => { qrCopyBtn.textContent = "复制链接"; }, 1500);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    qrCopyBtn.textContent = "已复制";
+    setTimeout(() => { qrCopyBtn.textContent = "复制链接"; }, 1500);
+  }
+};
 
 // --- Connect ---
 

@@ -175,4 +175,8 @@ export class SignalingClient {
   sendText(to, textId, content) {
     this.send({ type: "send-text", to, textId, content });
   }
+
+  sendRename(name) {
+    this._send({ type: "rename", name });
+  }
 }

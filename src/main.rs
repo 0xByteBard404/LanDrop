@@ -24,12 +24,27 @@ async fn main() {
 
     let state = AppState::new(config.max_file_size_mb * 1024 * 1024);
 
+    let local_ip = get_local_ip();
+    let lan_url = local_ip.as_ref().map_or_else(
+        || format!("http://localhost:{}", config.port),
+        |ip| format!("http://{}:{}", ip, config.port),
+    );
+
     let app = axum::Router::new()
         .route("/ws", axum::routing::get(signaling::ws_handler))
         .route(
             "/health",
             axum::routing::get(|| async {
                 axum::Json(serde_json::json!({"status": "ok"}))
+            }),
+        )
+        .route(
+            "/api/info",
+            axum::routing::get({
+                let url = lan_url.clone();
+                move || async move {
+                    axum::Json(serde_json::json!({ "url": url }))
+                }
             }),
         )
         .route(
@@ -49,7 +64,6 @@ async fn main() {
         .await
         .unwrap_or_else(|e| panic!("Failed to bind port {}: {}", config.port, e));
 
-    let local_ip = get_local_ip();
     tracing::info!("LanDrop v0.1.0 已启动！");
     tracing::info!("本机访问:    http://localhost:{}", config.port);
     if let Some(ip) = &local_ip {

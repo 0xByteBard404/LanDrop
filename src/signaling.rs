@@ -127,6 +127,23 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
                         tracing::info!(node_id = %node_id, text = %text, "收到消息");
+                        // Handle rename locally (no "to" field)
+                        if let Ok(val) = serde_json::from_str::<Value>(&text) {
+                            if val.get("type").and_then(|v| v.as_str()) == Some("rename") {
+                                if let Some(new_name) = val.get("name").and_then(|v| v.as_str()) {
+                                    let new_name = new_name.to_string();
+                                    if !new_name.is_empty() && new_name.len() <= 32 {
+                                        if let Some(mut entry) = state.nodes.get_mut(&node_id) {
+                                            entry.value_mut().info.name = new_name.clone();
+                                        }
+                                        tracing::info!(node_id = %node_id, name = %new_name, "设备重命名");
+                                        broadcast_peers(&state, &node_id);
+                                        // Also update the node_id variable for cleanup log
+                                    }
+                                }
+                                continue;
+                            }
+                        }
                         route_message(&state, &node_id, &text).await;
                     }
                     Some(Ok(Message::Close(reason))) => {
