@@ -1,5 +1,3 @@
-import { initCrypto } from "./crypto.js";
-
 const STORAGE_KEY = "landrop_identity";
 
 function loadIdentity() {
@@ -29,21 +27,6 @@ export class SignalingClient {
     this.onDisconnect = null;
     this.reconnectTimer = null;
     this.reconnectDelay = 1000;
-    this.publicKeyBase64 = null;
-    this.privateKey = null;
-  }
-
-  async initCryptoKeys() {
-    if (this.privateKey) return;
-    try {
-      const { publicKeyBase64, privateKey } = await initCrypto();
-      this.publicKeyBase64 = publicKeyBase64;
-      this.privateKey = privateKey;
-    } catch (e) {
-      console.warn("E2E 加密不可用:", e.message);
-      this.publicKeyBase64 = null;
-      this.privateKey = null;
-    }
   }
 
   connect(url = `ws://${location.host}/ws`) {
@@ -54,11 +37,10 @@ export class SignalingClient {
   _doConnect() {
     this.ws = new WebSocket(this.wsUrl);
 
-    this.ws.onopen = async () => {
+    this.ws.onopen = () => {
       this.reconnectDelay = 1000;
-      await this.initCryptoKeys();
       const identity = loadIdentity();
-      const joinMsg = { type: "join", protocolVersion: 1, pubKey: this.publicKeyBase64 };
+      const joinMsg = { type: "join", protocolVersion: 1 };
       if (identity) {
         joinMsg.nodeId = identity.nodeId;
         joinMsg.name = identity.name;
@@ -158,6 +140,10 @@ export class SignalingClient {
     });
   }
 
+  sendOfferSecureText(to, transferId, textPreview) {
+    this.send({ type: "offer-secure-text", to, transferId, textPreview });
+  }
+
   sendAcceptFile(to, transferId) {
     this.send({ type: "accept-file", to, transferId });
   }
@@ -186,12 +172,7 @@ export class SignalingClient {
     this.send({ type: "ice-candidate", to, transferId, candidate });
   }
 
-  sendText(to, textId, content, encrypted = false, iv = null) {
-    const msg = { type: "send-text", to, textId, content };
-    if (encrypted) {
-      msg.encrypted = true;
-      msg.iv = iv;
-    }
-    this.send(msg);
+  sendText(to, textId, content) {
+    this.send({ type: "send-text", to, textId, content });
   }
 }

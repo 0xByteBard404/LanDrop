@@ -92,6 +92,8 @@ export class FileTransfer {
     this.onTransferComplete = null;
     this.onTransferError = null;
     this.onIncomingFile = null;
+    this.onSecureTextReceived = null;
+    this.onSecureTextOffer = null;
     // Send queue: only 1 active P2P connection at a time to avoid SCTP congestion
     this._sendQueue = [];
     this._activeSends = 0;
@@ -144,6 +146,26 @@ export class FileTransfer {
     return transferId;
   }
 
+  // --- Sender: initiate secure text transfer via WebRTC DataChannel ---
+
+  async sendSecureText(peerId, text) {
+    const transferId = uuid();
+    const textPreview = text.length > 50 ? text.slice(0, 50) + "..." : text;
+    this.signaling.sendOfferSecureText(peerId, transferId, textPreview);
+
+    this.activeTransfers.set(transferId, {
+      role: "secure-sender",
+      peerId,
+      transferId,
+      text,
+      state: "waiting",
+      pendingIceCandidates: [],
+      remoteDescriptionSet: false,
+    });
+
+    return transferId;
+  }
+
   // --- Handle signaling messages ---
 
   handleSignalingMessage(msg) {
@@ -154,6 +176,24 @@ export class FileTransfer {
         if (transfer && transfer.role === "sender") {
           this._sendQueue.push({ peerId: msg.from, transferId: msg.transferId });
           this._drainSendQueue();
+        } else if (transfer && transfer.role === "secure-sender") {
+          this._startSecureTextConnection(transfer.peerId, msg.transferId, transfer.text);
+        }
+        break;
+
+      case "offer-secure-text":
+        // Auto-accept secure text transfer
+        this.signaling.sendAcceptFile(msg.from, msg.transferId);
+        this.activeTransfers.set(msg.transferId, {
+          role: "secure-receiver",
+          peerId: msg.from,
+          transferId: msg.transferId,
+          state: "waiting",
+          pendingIceCandidates: [],
+          remoteDescriptionSet: false,
+        });
+        if (this.onSecureTextOffer) {
+          this.onSecureTextOffer(msg.from, msg.transferId, msg.textPreview);
         }
         break;
 
@@ -312,6 +352,73 @@ export class FileTransfer {
     };
 
     // Create and send SDP offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    this.signaling.sendSdpOffer(peerId, transferId, JSON.stringify(pc.localDescription));
+  }
+
+  // --- Sender: secure text connection ---
+
+  async _startSecureTextConnection(peerId, transferId, text) {
+    const transfer = this.activeTransfers.get(transferId);
+    if (!transfer) return;
+
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    transfer.pc = pc;
+    transfer.state = "connecting";
+
+    const timeout = setTimeout(() => {
+      if (this.activeTransfers.has(transferId)) {
+        this.signaling.sendTransferError(peerId, transferId, "ice_timeout");
+        this._cleanup(transferId);
+        if (this.onTransferError) this.onTransferError(transferId, "ice_timeout");
+      }
+    }, 15000);
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        this.signaling.sendIceCandidate(peerId, transferId, e.candidate);
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState;
+      if (state === "connected" || state === "completed") {
+        clearTimeout(timeout);
+      } else if (state === "failed" || state === "disconnected") {
+        clearTimeout(timeout);
+        if (this.activeTransfers.has(transferId)) {
+          this._cleanup(transferId);
+          if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
+        }
+      }
+    };
+
+    const textChannel = pc.createDataChannel("secure-text", { ordered: true });
+    transfer.dataChannel = textChannel;
+
+    textChannel.onopen = () => {
+      clearTimeout(timeout);
+      textChannel.send(JSON.stringify({ type: "text", content: text }));
+    };
+
+    textChannel.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === "received") {
+          this._cleanup(transferId);
+        }
+      } catch {}
+    };
+
+    textChannel.onerror = () => {
+      clearTimeout(timeout);
+      if (this.activeTransfers.has(transferId)) {
+        this._cleanup(transferId);
+        if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
+      }
+    };
+
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     this.signaling.sendSdpOffer(peerId, transferId, JSON.stringify(pc.localDescription));
@@ -499,6 +606,28 @@ export class FileTransfer {
         };
         channel.onclose = () => {
           console.log(`[接收] ${transferId.slice(0,8)} 数据通道关闭, 已收=${transfer._receivedCount||'?'} 预期=${transfer.totalChunks||'?'}`);
+        };
+      } else if (channel.label === "secure-text") {
+        channel.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === "text") {
+              clearTimeout(iceTimer);
+              if (this.onSecureTextReceived) {
+                this.onSecureTextReceived(transferId, data.content, fromId);
+              }
+              channel.send(JSON.stringify({ type: "received" }));
+              setTimeout(() => this._cleanup(transferId), 500);
+            }
+          } catch (err) {
+            console.error("Secure text receive error:", err);
+          }
+        };
+        channel.onerror = () => {
+          clearTimeout(iceTimer);
+          if (this.activeTransfers.has(transferId)) {
+            this._cleanup(transferId);
+          }
         };
       }
     };

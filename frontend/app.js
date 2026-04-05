@@ -1,6 +1,5 @@
 import { SignalingClient } from "./signaling.js";
 import { FileTransfer } from "./webrtc.js";
-import { encryptText, decryptText } from "./crypto.js";
 
 const signaling = new SignalingClient();
 const transfer = new FileTransfer(signaling);
@@ -86,6 +85,18 @@ transfer.onTransferError = (transferId, error) => {
   };
   updateTransferStatus(transferId, messages[error] || `传输失败: ${error}`, "error");
   dismissOffer(transferId);
+};
+
+transfer.onSecureTextReceived = (transferId, text, fromId) => {
+  const peerName = signaling.peers.get(fromId)?.name || "未知设备";
+  addMessageCard(transferId, text, "receiver", peerName, true);
+  textReceiveTitle.textContent = `来自 ${peerName} 的文本 (安全)`;
+  textReceiveContent.textContent = text;
+  textReceiveDialog.classList.remove("hidden");
+};
+
+transfer.onSecureTextOffer = (fromId, transferId, textPreview) => {
+  console.log(`安全文本传输请求来自 ${fromId}, 已自动接受`);
 };
 
 // --- Render peers ---
@@ -275,17 +286,8 @@ function openTextCompose(peerId, peerName) {
   textComposeTitle.textContent = `发送文本给 ${peerName}`;
   textComposeInput.value = "";
   textComposeSecure.checked = false;
-
-  // Check if peer has public key
-  const peer = signaling.peers.get(peerId);
-  if (peer && peer.pubKey) {
-    textComposeSecure.disabled = false;
-    secureHint.textContent = "";
-  } else {
-    textComposeSecure.disabled = true;
-    secureHint.textContent = "对方不支持安全传输";
-  }
-
+  textComposeSecure.disabled = false;
+  secureHint.textContent = "";
   textComposeDialog.classList.remove("hidden");
   setTimeout(() => textComposeInput.focus(), 50);
 }
@@ -316,12 +318,10 @@ textComposeSendBtn.onclick = async () => {
 
   if (secure) {
     try {
-      const peer = signaling.peers.get(textComposeTargetId);
-      const { content: cipher, iv } = await encryptText(content, peer.pubKey, signaling.privateKey);
-      signaling.sendText(textComposeTargetId, textId, cipher, true, iv);
+      await transfer.sendSecureText(textComposeTargetId, content);
       addMessageCard(textId, content, "sender", peerName, true);
     } catch (e) {
-      alert("加密失败: " + e.message);
+      alert("安全传输失败: " + e.message);
       return;
     }
   } else {
@@ -335,26 +335,10 @@ textComposeSendBtn.onclick = async () => {
 
 async function showReceivedText(msg) {
   const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
-  let content = msg.content;
-  let encrypted = false;
+  addMessageCard(msg.textId, msg.content, "receiver", peerName, false);
 
-  if (msg.encrypted && signaling.privateKey) {
-    try {
-      const peer = signaling.peers.get(msg.from);
-      if (peer && peer.pubKey) {
-        content = await decryptText(msg.content, msg.iv, peer.pubKey, signaling.privateKey);
-        encrypted = true;
-      }
-    } catch (e) {
-      console.error("解密失败:", e);
-      content = "[解密失败]";
-    }
-  }
-
-  addMessageCard(msg.textId, content, "receiver", peerName, encrypted);
-
-  textReceiveTitle.textContent = `来自 ${peerName} 的文本` + (encrypted ? " (安全)" : "");
-  textReceiveContent.textContent = content;
+  textReceiveTitle.textContent = `来自 ${peerName} 的文本`;
+  textReceiveContent.textContent = msg.content;
   textReceiveDialog.classList.remove("hidden");
 }
 

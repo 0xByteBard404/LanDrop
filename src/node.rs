@@ -9,8 +9,6 @@ pub type NodeId = String;
 pub struct NodeInfo {
     pub id: NodeId,
     pub name: String,
-    #[serde(rename = "pubKey", skip_serializing_if = "Option::is_none")]
-    pub pub_key: Option<String>,
 }
 
 pub struct NodeEntry {
