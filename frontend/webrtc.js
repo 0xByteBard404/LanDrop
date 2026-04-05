@@ -94,6 +94,7 @@ export class FileTransfer {
     this.onIncomingFile = null;
     this.onSecureTextReceived = null;
     this.onSecureTextOffer = null;
+    this.onMediaPreview = null;
     // Send queue: only 1 active P2P connection at a time to avoid SCTP congestion
     this._sendQueue = [];
     this._activeSends = 0;
@@ -700,6 +701,11 @@ export class FileTransfer {
         transfer.fileSize = msg.fileSize;
         transfer.mimeType = msg.mimeType;
         transfer.state = "receiving";
+
+        // Notify media preview
+        if (this.onMediaPreview && (msg.mimeType.startsWith("image/") || msg.mimeType.startsWith("video/"))) {
+          this.onMediaPreview(transferId, msg.fileName, msg.mimeType, transfer.fileSize);
+        }
         break;
 
       case "complete": {
@@ -802,7 +808,14 @@ export class FileTransfer {
         a.href = url;
         a.download = transfer.fileName;
         a.click();
-        URL.revokeObjectURL(url);
+
+        // Media preview
+        const mimeType = transfer.mimeType || "application/octet-stream";
+        if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) {
+          transfer._blobUrl = url; // keep blob URL for preview
+        } else {
+          URL.revokeObjectURL(url);
+        }
 
         if (this.onTransferComplete) this.onTransferComplete(transferId);
       } else {

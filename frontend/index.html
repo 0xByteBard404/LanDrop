@@ -6,7 +6,7 @@
   <title>LanDrop</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <div id="app">
@@ -43,6 +43,15 @@
         <h2>消息</h2>
         <div id="messages-list"></div>
         <p id="no-messages" class="hint">暂无消息</p>
+      </section>
+
+      <section id="chat-section">
+        <h2>群聊</h2>
+        <div id="chat-messages"></div>
+        <div id="chat-input-bar">
+          <input type="text" id="chat-input" placeholder="发送群聊消息... (Enter 发送)" maxlength="4096">
+          <button id="chat-send" class="btn btn-primary btn-sm">发送</button>
+        </div>
       </section>
     </main>
 
@@ -96,6 +105,17 @@
         <div class="dialog-actions">
           <button id="qr-copy" class="btn btn-secondary">复制链接</button>
           <button id="qr-close" class="btn btn-primary">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Media preview dialog -->
+    <div id="preview-dialog" class="dialog hidden">
+      <div class="dialog-content preview-dialog-content">
+        <div id="preview-media-container"></div>
+        <div class="dialog-actions">
+          <button id="preview-download" class="btn btn-secondary">下载</button>
+          <button id="preview-close" class="btn btn-primary">关闭</button>
         </div>
       </div>
     </div>

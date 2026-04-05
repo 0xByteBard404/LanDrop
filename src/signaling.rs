@@ -143,6 +143,29 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 }
                                 continue;
                             }
+                            // Handle chat: broadcast to all other nodes
+                            if val.get("type").and_then(|v| v.as_str()) == Some("chat") {
+                                if let Some(content) = val.get("content").and_then(|v| v.as_str()) {
+                                    if content.len() > 1024 * 1024 {
+                                        let err = ErrorMsg {
+                                            msg_type: "error".into(),
+                                            code: "text_too_long".into(),
+                                            message: format!("Chat text length {} exceeds maximum 1048576 bytes", content.len()),
+                                        };
+                                        let _ = state.send_to(&node_id, &serde_json::to_string(&err).unwrap());
+                                        continue;
+                                    }
+                                }
+                                let mut chat_msg = val.clone();
+                                chat_msg["from"] = Value::String(node_id.clone());
+                                chat_msg["name"] = Value::String(
+                                    state.nodes.get(&node_id).map(|e| e.info.name.clone()).unwrap_or_default()
+                                );
+                                let chat_str = serde_json::to_string(&chat_msg).unwrap();
+                                state.broadcast(&chat_str, None);
+                                tracing::info!(node_id = %node_id, "广播聊天消息");
+                                continue;
+                            }
                         }
                         route_message(&state, &node_id, &text).await;
                     }

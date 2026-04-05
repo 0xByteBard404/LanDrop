@@ -25,6 +25,7 @@ export class SignalingClient {
     this.onTextReceived = null;
     this.onMessage = null;
     this.onDisconnect = null;
+    this.onChatMessage = null;
     this.reconnectTimer = null;
     this.reconnectDelay = 1000;
   }
@@ -113,6 +114,10 @@ export class SignalingClient {
         if (this.onTextReceived) this.onTextReceived(msg);
         break;
 
+      case "chat":
+        if (this.onChatMessage) this.onChatMessage(msg);
+        break;
+
       default:
         if (this.onMessage) this.onMessage(msg);
         break;
@@ -178,5 +183,9 @@ export class SignalingClient {
 
   sendRename(name) {
     this._send({ type: "rename", name });
+  }
+
+  sendChat(content) {
+    this._send({ type: "chat", content });
   }
 }

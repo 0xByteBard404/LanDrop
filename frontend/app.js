@@ -9,6 +9,9 @@ const transfer = new FileTransfer(signaling);
 const selfInfoEl = document.getElementById("self-info");
 const peersListEl = document.getElementById("peers-list");
 const noPeersEl = document.getElementById("no-peers");
+const chatMessagesEl = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-input");
+const chatSendBtn = document.getElementById("chat-send");
 const transfersListEl = document.getElementById("transfers-list");
 const noTransfersEl = document.getElementById("no-transfers");
 const offerDialog = document.getElementById("offer-dialog");
@@ -37,14 +40,47 @@ const qrUrlEl = document.getElementById("qr-url");
 const qrCopyBtn = document.getElementById("qr-copy");
 const qrCloseBtn = document.getElementById("qr-close");
 const speedLimitSelect = document.getElementById("speed-limit");
-
-speedLimitSelect.onchange = () => {
+const previewDialog = document.getElementById("preview-dialog");
+const previewMediaContainer = document.getElementById("preview-media-container");
+const previewDownloadBtn = document.getElementById("preview-download");
+const previewCloseBtn = document.getElementById("preview-close");speedLimitSelect.onchange = () => {
   transfer._speedLimit = parseInt(speedLimitSelect.value);
 };
-const renameDialog = document.getElementById("rename-dialog");
-const renameInput = document.getElementById("rename-input");
-const renameCancelBtn = document.getElementById("rename-cancel");
-const renameSaveBtn = document.getElementById("rename-save");
+
+// --- Media preview ---
+
+transfer.onMediaPreview = (transferId, fileName, mimeType, fileSize) => {
+  const t = transfer.activeTransfers.get(transferId);
+  if (!t || !t._blobUrl) return;
+  showMediaPreview(t._blobUrl, fileName, mimeType);
+};
+
+function showMediaPreview(blobUrl, fileName, mimeType) {
+  previewMediaContainer.innerHTML = "";
+  if (mimeType.startsWith("image/")) {
+    const img = document.createElement("img");
+    img.src = blobUrl;
+    img.className = "preview-img";
+    previewMediaContainer.appendChild(img);
+  } else if (mimeType.startsWith("video/")) {
+    const video = document.createElement("video");
+    video.src = blobUrl;
+    video.controls = true;
+    video.className = "preview-video";
+    previewMediaContainer.appendChild(video);
+  }
+  previewDownloadBtn.onclick = () => {
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fileName;
+    a.click();
+  };
+  previewDialog.classList.remove("hidden");
+}
+
+previewCloseBtn.onclick = () => {
+  previewDialog.classList.add("hidden");
+};
 
 // --- Browser notifications ---
 
@@ -187,6 +223,47 @@ transfer.onSecureTextOffer = (fromId, transferId, textPreview) => {
   console.log(`安全文本传输请求来自 ${fromId}, 已自动接受`);
 };
 
+// --- Chat ---
+
+signaling.onChatMessage = (msg) => {
+  const isSelf = msg.from === signaling.nodeId;
+  const name = isSelf ? signaling.nodeInfo?.name : (msg.name || signaling.peers.get(msg.from)?.name || "未知设备");
+  addChatMessage(name, msg.content, isSelf);
+  if (!isSelf) {
+    showNotification("群聊消息", `${name}: ${msg.content.slice(0, 60)}`);
+  }
+};
+
+function addChatMessage(name, content, isSelf) {
+  const el = document.createElement("div");
+  el.className = `chat-msg ${isSelf ? "self" : "other"}`;
+  const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  el.innerHTML = `
+    <div class="chat-msg-header">
+      <span class="chat-msg-name">${escapeHtml(name)}</span>
+      <span class="chat-msg-time">${time}</span>
+    </div>
+    <div class="chat-msg-text">${escapeHtml(content)}</div>
+  `;
+  chatMessagesEl.appendChild(el);
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+
+function sendChatMessage() {
+  const content = chatInput.value.trim();
+  if (!content) return;
+  signaling.sendChat(content);
+  chatInput.value = "";
+}
+
+chatSendBtn.onclick = sendChatMessage;
+chatInput.onkeydown = (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+};
+
 // --- Render peers ---
 
 function renderPeers(peers) {
@@ -211,11 +288,6 @@ function renderPeers(peers) {
     sendBtn.className = "btn btn-send";
     sendBtn.textContent = "发送文件";
     sendBtn.onclick = () => selectAndSend(id);
-
-    const folderBtn = document.createElement("button");
-    folderBtn.className = "btn btn-folder";
-    folderBtn.textContent = "文件夹";
-    folderBtn.onclick = () => selectFolderAndSend(id);
 
     const textBtn = document.createElement("button");
     textBtn.className = "btn-text-link";
@@ -288,17 +360,6 @@ async function selectAndSend(peerId) {
   input.click();
 }
 
-async function selectFolderAndSend(peerId) {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.webkitdirectory = true;
-  input.onchange = async () => {
-    const files = input.files;
-    if (!files || files.length === 0) return;
-    await sendFilesToPeer(peerId, files);
-  };
-  input.click();
-}
 
 // --- Offer dialog ---
 
