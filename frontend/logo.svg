@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0c0c0e"/>
+      <stop offset="100%" stop-color="#1a1a1e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8a030"/>
+      <stop offset="100%" stop-color="#f5d080"/>
+    </linearGradient>
+    <linearGradient id="plane-body" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f0b848"/>
+      <stop offset="50%" stop-color="#e8a030"/>
+      <stop offset="100%" stop-color="#d49028"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="soft-glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.03" stroke="#e8a030" stroke-width="0.5" fill="none">
+    <line x1="128" y1="0" x2="128" y2="512"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+    <line x1="384" y1="0" x2="384" y2="512"/>
+    <line x1="0" y1="128" x2="512" y2="128"/>
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="0" y1="384" x2="512" y2="384"/>
+  </g>
+
+  <!-- Connection lines between nodes -->
+  <g opacity="0.15" stroke="#e8a030" stroke-width="1.5" fill="none" stroke-dasharray="4 6">
+    <line x1="130" y1="310" x2="256" y2="200"/>
+    <line x1="382" y1="310" x2="256" y2="200"/>
+    <line x1="130" y1="310" x2="382" y2="310"/>
+    <line x1="100" y1="180" x2="256" y2="200"/>
+    <line x1="412" y1="180" x2="256" y2="200"/>
+  </g>
+
+  <!-- Paper airplane - main body -->
+  <g transform="translate(256, 210) scale(1.1)" filter="url(#glow)">
+    <!-- Shadow -->
+    <polygon points="0,-60 -70,30 0,10 70,30" fill="#e8a030" opacity="0.15" transform="translate(4,4)"/>
+
+    <!-- Top wing -->
+    <polygon points="0,-60 -70,30 0,10" fill="url(#plane-body)" opacity="0.95"/>
+    <!-- Bottom wing -->
+    <polygon points="0,-60 70,30 0,10" fill="#d49028" opacity="0.85"/>
+    <!-- Center fold line -->
+    <line x1="0" y1="-60" x2="0" y2="10" stroke="#f5d080" stroke-width="1.5" opacity="0.6"/>
+    <!-- Wing crease lines -->
+    <line x1="0" y1="-40" x2="-35" y2="15" stroke="#f5d080" stroke-width="0.8" opacity="0.3"/>
+    <line x1="0" y1="-40" x2="35" y2="15" stroke="#f5d080" stroke-width="0.8" opacity="0.3"/>
+  </g>
+
+  <!-- Motion trail lines -->
+  <g opacity="0.2" stroke="#e8a030" stroke-width="2" stroke-linecap="round">
+    <line x1="155" y1="195" x2="120" y2="200"/>
+    <line x1="150" y1="210" x2="108" y2="218"/>
+    <line x1="148" y1="225" x2="100" y2="238"/>
+  </g>
+
+  <!-- Node dots - representing LAN devices -->
+  <!-- Left node -->
+  <circle cx="130" cy="310" r="10" fill="#0c0c0e" stroke="#e8a030" stroke-width="2.5" filter="url(#soft-glow)"/>
+  <circle cx="130" cy="310" r="4" fill="#e8a030" opacity="0.8"/>
+
+  <!-- Right node -->
+  <circle cx="382" cy="310" r="10" fill="#0c0c0e" stroke="#e8a030" stroke-width="2.5" filter="url(#soft-glow)"/>
+  <circle cx="382" cy="310" r="4" fill="#e8a030" opacity="0.8"/>
+
+  <!-- Top-left node -->
+  <circle cx="100" cy="180" r="7" fill="#0c0c0e" stroke="#e8a030" stroke-width="2" opacity="0.6"/>
+  <circle cx="100" cy="180" r="3" fill="#e8a030" opacity="0.5"/>
+
+  <!-- Top-right node -->
+  <circle cx="412" cy="180" r="7" fill="#0c0c0e" stroke="#e8a030" stroke-width="2" opacity="0.6"/>
+  <circle cx="412" cy="180" r="3" fill="#e8a030" opacity="0.5"/>
+
+  <!-- Center node (self) -->
+  <circle cx="256" cy="200" r="5" fill="#e8a030" opacity="0.4"/>
+
+  <!-- Transfer arrows on connection lines -->
+  <g fill="#e8a030" opacity="0.4">
+    <polygon points="193,248 200,244 200,252" transform="rotate(-25, 196, 248)"/>
+    <polygon points="319,248 326,244 326,252" transform="rotate(25, 322, 248)"/>
+  </g>
+
+  <!-- Text: LanDrop -->
+  <text x="256" y="400" text-anchor="middle" font-family="'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="52" font-weight="700" letter-spacing="-1" fill="url(#accent)">LanDrop</text>
+
+  <!-- Tagline -->
+  <text x="256" y="432" text-anchor="middle" font-family="'Outfit', -apple-system, sans-serif" font-size="13" font-weight="400" letter-spacing="3" fill="#706b65" opacity="0.7">LAN FILE TRANSFER</text>
+</svg>

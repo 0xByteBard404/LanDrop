@@ -1,4 +1,7 @@
-# LanDrop
+<div align="center">
+  <img src="frontend/logo.svg" alt="LanDrop" width="128">
+  <h1>LanDrop</h1>
+</div>
 
 局域网 P2P 文件与文本传输工具。基于 WebRTC DataChannel 实现浏览器端到端直传，无需安装客户端，打开即用。
 

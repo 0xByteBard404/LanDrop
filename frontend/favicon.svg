@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0c0c0e"/>
+      <stop offset="100%" stop-color="#1a1a1e"/>
+    </linearGradient>
+    <linearGradient id="plane" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f0b848"/>
+      <stop offset="100%" stop-color="#e8a030"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+
+  <!-- Paper airplane -->
+  <g transform="translate(32, 26)">
+    <polygon points="0,-14 -16,8 0,2" fill="url(#plane)"/>
+    <polygon points="0,-14 16,8 0,2" fill="#d49028"/>
+    <line x1="0" y1="-14" x2="0" y2="2" stroke="#f5d080" stroke-width="0.8" opacity="0.5"/>
+  </g>
+
+  <!-- Node dots -->
+  <circle cx="17" cy="42" r="3" fill="none" stroke="#e8a030" stroke-width="1.5"/>
+  <circle cx="17" cy="42" r="1" fill="#e8a030"/>
+  <circle cx="47" cy="42" r="3" fill="none" stroke="#e8a030" stroke-width="1.5"/>
+  <circle cx="47" cy="42" r="1" fill="#e8a030"/>
+
+  <!-- Connection line -->
+  <line x1="20" y1="42" x2="44" y2="42" stroke="#e8a030" stroke-width="0.8" opacity="0.3" stroke-dasharray="2 3"/>
+</svg>
