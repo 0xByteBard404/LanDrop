@@ -1,4 +1,7 @@
 const STORAGE_KEY = "landrop_identity";
+const WS_PATH = "/ws";
+const RECONNECT_BASE_DELAY = 1000;
+const RECONNECT_MAX_DELAY = 30000;
 
 function loadIdentity() {
   try {
@@ -20,6 +23,7 @@ export class SignalingClient {
     this.nodeId = null;
     this.nodeInfo = null;
     this.peers = new Map(); // id -> {id, name}
+    this.config = null; // set by app.js before connect()
     this.onPeersUpdate = null;
     this.onOfferFile = null;
     this.onTextReceived = null;
@@ -27,10 +31,10 @@ export class SignalingClient {
     this.onDisconnect = null;
     this.onChatMessage = null;
     this.reconnectTimer = null;
-    this.reconnectDelay = 1000;
+    this.reconnectDelay = RECONNECT_BASE_DELAY;
   }
 
-  connect(url = `ws://${location.host}/ws`) {
+  connect(url = `ws://${location.host}${WS_PATH}`) {
     this.wsUrl = url;
     this._doConnect();
   }
@@ -39,14 +43,12 @@ export class SignalingClient {
     this.ws = new WebSocket(this.wsUrl);
 
     this.ws.onopen = () => {
-      this.reconnectDelay = 1000;
+      this.reconnectDelay = RECONNECT_BASE_DELAY;
       const identity = loadIdentity();
-      const joinMsg = { type: "join", protocolVersion: 1 };
+      const joinMsg = { type: "join", protocolVersion: this.config?.protocolVersion ?? 1 };
       if (identity) {
         joinMsg.nodeId = identity.nodeId;
         joinMsg.name = identity.name;
-      } else {
-        joinMsg.name = this._generateName();
       }
       this._send(joinMsg);
     };
@@ -69,17 +71,8 @@ export class SignalingClient {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this._doConnect();
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_DELAY);
     }, this.reconnectDelay);
-  }
-
-  _generateName() {
-    const adjectives = ["橘色", "蓝色", "红色", "绿色", "紫色", "金色", "银色", "粉色"];
-    const animals = ["狐狸", "海豚", "熊猫", "兔子", "猫咪", "企鹅", "鹿", "松鼠"];
-    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-    const animal = animals[Math.floor(Math.random() * animals.length)];
-    const num = Math.floor(Math.random() * 99) + 1;
-    return `${adj}${animal} #${num}`;
   }
 
   _handleMessage(msg) {
@@ -87,6 +80,15 @@ export class SignalingClient {
       case "joined":
         this.nodeId = msg.nodeId;
         this.nodeInfo = { id: msg.nodeId, name: msg.name };
+        // Update config from server
+        if (msg.maxFileSize != null) {
+          this.config = {
+            maxFileSize: msg.maxFileSize,
+            maxTextSize: msg.maxTextSize,
+            protocolVersion: msg.protocolVersion,
+            maxNameLength: msg.maxNameLength,
+          };
+        }
         saveIdentity(msg.nodeId, msg.name);
         this.peers.clear();
         if (msg.peers) {

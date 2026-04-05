@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
-const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 1;
+pub const MAX_NAME_LENGTH: usize = 32;
 
 // --- Message structs ---
 
@@ -28,6 +29,14 @@ struct JoinedMsg {
     node_id: String,
     name: String,
     peers: Vec<NodeInfo>,
+    #[serde(rename = "maxFileSize")]
+    max_file_size: u64,
+    #[serde(rename = "maxTextSize")]
+    max_text_size: u64,
+    #[serde(rename = "protocolVersion")]
+    protocol_version: u32,
+    #[serde(rename = "maxNameLength")]
+    max_name_length: usize,
 }
 
 #[derive(Serialize)]
@@ -98,6 +107,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         node_id: node_id.clone(),
         name: name.clone(),
         peers: state.get_peer_list(Some(&node_id)),
+        max_file_size: state.max_file_size,
+        max_text_size: state.max_text_size,
+        protocol_version: PROTOCOL_VERSION,
+        max_name_length: MAX_NAME_LENGTH,
     };
     if send_json(&mut sink, &joined).await.is_err() {
         return;
@@ -132,7 +145,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             if val.get("type").and_then(|v| v.as_str()) == Some("rename") {
                                 if let Some(new_name) = val.get("name").and_then(|v| v.as_str()) {
                                     let new_name = new_name.to_string();
-                                    if !new_name.is_empty() && new_name.len() <= 32 {
+                                    if !new_name.is_empty() && new_name.len() <= MAX_NAME_LENGTH {
                                         if let Some(mut entry) = state.nodes.get_mut(&node_id) {
                                             entry.value_mut().info.name = new_name.clone();
                                         }
@@ -146,11 +159,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             // Handle chat: broadcast to all other nodes
                             if val.get("type").and_then(|v| v.as_str()) == Some("chat") {
                                 if let Some(content) = val.get("content").and_then(|v| v.as_str()) {
-                                    if content.len() > 1024 * 1024 {
+                                    if content.len() as u64 > state.max_text_size {
                                         let err = ErrorMsg {
                                             msg_type: "error".into(),
                                             code: "text_too_long".into(),
-                                            message: format!("Chat text length {} exceeds maximum 1048576 bytes", content.len()),
+                                            message: format!("Chat text length {} exceeds maximum {} bytes", content.len(), state.max_text_size),
                                         };
                                         let _ = state.send_to(&node_id, &serde_json::to_string(&err).unwrap());
                                         continue;
@@ -278,13 +291,14 @@ async fn route_message(state: &Arc<AppState>, from_id: &NodeId, text: &str) {
     // Validate text length for send-text messages (max 1MB)
     if msg_type == "send-text" {
         if let Some(content) = value.get("content").and_then(|v| v.as_str()) {
-            if content.len() > 1024 * 1024 {
+            if content.len() as u64 > state.max_text_size {
                 let err = ErrorMsg {
                     msg_type: "error".into(),
                     code: "text_too_long".into(),
                     message: format!(
-                        "Text length {} exceeds maximum 1048576 bytes",
-                        content.len()
+                        "Text length {} exceeds maximum {} bytes",
+                        content.len(),
+                        state.max_text_size
                     ),
                 };
                 let _ = state.send_to(from_id, &serde_json::to_string(&err).unwrap());

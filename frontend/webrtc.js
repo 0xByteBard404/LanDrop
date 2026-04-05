@@ -1,5 +1,18 @@
 const CHUNK_SIZE = 16384; // 16KB
-const MAX_FILE_SIZE = 512 * 1024 * 1024; // 500MB
+
+// --- Constants ---
+const ICE_SERVERS = [];                       // STUN/TURN servers (LAN-only by default)
+const ICE_TIMEOUT_FILE = 30000;               // ICE timeout for file transfers (ms)
+const ICE_TIMEOUT_TEXT = 15000;               // ICE timeout for secure text (ms)
+const BUFFER_THRESHOLD = 1024 * 1024;         // Flow control buffer threshold (1MB)
+const FLOW_CONTROL_STALL_TIMEOUT = 10000;     // Max wait for buffer drain (ms)
+const CHUNK_WAIT_TIMEOUT = 60000;             // Max wait for all chunks to arrive (ms)
+const RETRANSMIT_REQUEST_INTERVAL = 3000;     // Interval between retransmission requests (ms)
+const VERIFY_POLL_INTERVAL = 100;             // Polling interval during verification (ms)
+const PROGRESS_THROTTLE = 250;                // Min ms between progress updates
+const BUFFER_FLUSH_INTERVAL = 50;             // Polling interval for buffer flush (ms)
+const POST_SEND_DELAY = 500;                  // Safety delay before sending complete (ms)
+const WS_PATH = "/ws";                        // WebSocket endpoint path
 
 function uuid() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -127,8 +140,8 @@ export class FileTransfer {
   // --- Sender: initiate file transfer ---
 
   async sendFile(peerId, file) {
-    if (file.size > MAX_FILE_SIZE) {
-      throw new Error(`文件超过 500MB 限制`);
+    if (file.size > (this.signaling.config?.maxFileSize ?? Infinity)) {
+      throw new Error("文件超过大小限制");
     }
 
     const transferId = uuid();
@@ -271,7 +284,7 @@ export class FileTransfer {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
 
-    const pc = new RTCPeerConnection({ iceServers: [] });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     transfer.pc = pc;
     transfer.state = "connecting";
 
@@ -282,7 +295,7 @@ export class FileTransfer {
         this._cleanup(transferId);
         if (this.onTransferError) this.onTransferError(transferId, "ice_timeout");
       }
-    }, 30000);
+    }, ICE_TIMEOUT_FILE);
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
@@ -314,7 +327,7 @@ export class FileTransfer {
       maxRetransmits: null,
     });
     dataChannel.binaryType = "arraybuffer";
-    dataChannel.bufferedAmountLowThreshold = 1024 * 1024; // 1MB
+    dataChannel.bufferedAmountLowThreshold = BUFFER_THRESHOLD;
     transfer.dataChannel = dataChannel;
 
     // Wait for data channel to open, then send file
@@ -365,7 +378,7 @@ export class FileTransfer {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
 
-    const pc = new RTCPeerConnection({ iceServers: [] });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     transfer.pc = pc;
     transfer.state = "connecting";
 
@@ -375,7 +388,7 @@ export class FileTransfer {
         this._cleanup(transferId);
         if (this.onTransferError) this.onTransferError(transferId, "ice_timeout");
       }
-    }, 15000);
+    }, ICE_TIMEOUT_TEXT);
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
@@ -431,7 +444,7 @@ export class FileTransfer {
     if (!transfer) return;
 
     const { file, peerId, controlChannel, dataChannel } = transfer;
-    const threshold = 1024 * 1024; // 1MB
+    const threshold = BUFFER_THRESHOLD;
 
     try {
       // Compute SHA-256
@@ -483,7 +496,7 @@ export class FileTransfer {
             new Promise((resolve) => {
               dataChannel.addEventListener("bufferedamountlow", resolve, { once: true });
             }),
-            new Promise((resolve) => setTimeout(resolve, 10000)),
+            new Promise((resolve) => setTimeout(resolve, FLOW_CONTROL_STALL_TIMEOUT)),
           ]);
         }
 
@@ -500,7 +513,7 @@ export class FileTransfer {
 
         // Throttled progress (max 4 updates/sec per transfer)
         const now = Date.now();
-        if (this.onProgress && now - lastProgressTime > 250) {
+        if (this.onProgress && now - lastProgressTime > PROGRESS_THROTTLE) {
           lastProgressTime = now;
           this.onProgress(transferId, i + 1, totalChunks);
         }
@@ -515,13 +528,13 @@ export class FileTransfer {
       console.log(`[发送] ${transferId.slice(0,8)} 所有块已发送, 等待缓冲区清空, bufferedAmount=${dataChannel.bufferedAmount}`);
       while (dataChannel.bufferedAmount > 0) {
         if (!this.activeTransfers.has(transferId)) return;
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, BUFFER_FLUSH_INTERVAL));
       }
 
       // Safety net: send "complete" as fallback trigger.
       // The receiver auto-verifies when all chunks arrive (in _handleChunk),
       // so timing here is no longer critical.
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, POST_SEND_DELAY));
 
       // Send complete via control channel
       if (!this.activeTransfers.has(transferId)) return;
@@ -547,7 +560,7 @@ export class FileTransfer {
   // --- Receiver: handle incoming SDP offer ---
 
   async _handleSdpOffer(fromId, transferId, sdpStr) {
-    const pc = new RTCPeerConnection({ iceServers: [] });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
     // Store for ICE candidate buffering before remote description is set
     const transfer = this.activeTransfers.get(transferId) || {};
@@ -564,7 +577,7 @@ export class FileTransfer {
     const iceTimer = setTimeout(() => {
       this.signaling.sendTransferError(fromId, transferId, "ice_timeout");
       this._cleanup(transferId);
-    }, 30000);
+    }, ICE_TIMEOUT_FILE);
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
@@ -629,7 +642,7 @@ export class FileTransfer {
                 this.onSecureTextReceived(transferId, data.content, fromId);
               }
               channel.send(JSON.stringify({ type: "received" }));
-              setTimeout(() => this._cleanup(transferId), 500);
+              setTimeout(() => this._cleanup(transferId), POST_SEND_DELAY);
             }
           } catch (err) {
             console.error("Secure text receive error:", err);
@@ -673,7 +686,7 @@ export class FileTransfer {
 
     // Throttled progress (max 4 updates/sec per transfer)
     const now = Date.now();
-    if (this.onProgress && (!transfer._lastProgressTime || now - transfer._lastProgressTime > 250)) {
+    if (this.onProgress && (!transfer._lastProgressTime || now - transfer._lastProgressTime > PROGRESS_THROTTLE)) {
       transfer._lastProgressTime = now;
       this.onProgress(transferId, received, transfer.totalChunks || 0);
     }
@@ -755,7 +768,7 @@ export class FileTransfer {
 
       while (_count() < transfer.totalChunks) {
         const elapsed = Date.now() - waitStart;
-        if (elapsed > 60000) {
+        if (elapsed > CHUNK_WAIT_TIMEOUT) {
           const received = _count();
           console.error(`分块超时: 收到 ${received}/${transfer.totalChunks}`);
           if (this.onTransferError) this.onTransferError(transferId, "chunk_timeout");
@@ -764,7 +777,7 @@ export class FileTransfer {
         }
 
         // Periodically request retransmission of missing chunks
-        if (Date.now() - lastRetryTime > 3000 && transfer.controlChannel) {
+        if (Date.now() - lastRetryTime > RETRANSMIT_REQUEST_INTERVAL && transfer.controlChannel) {
           lastRetryTime = Date.now();
           const missing = [];
           for (let i = 0; i < transfer.totalChunks; i++) {
@@ -776,7 +789,7 @@ export class FileTransfer {
           }
         }
 
-        await new Promise((r) => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, VERIFY_POLL_INTERVAL));
       }
 
       // Merge chunks
@@ -849,8 +862,8 @@ export class FileTransfer {
       payload.set(new Uint8Array(chunkData), 4);
 
       // Simple flow control
-      if (transfer.dataChannel.bufferedAmount > 1024 * 1024) {
-        await new Promise(r => setTimeout(r, 100));
+      if (transfer.dataChannel.bufferedAmount > BUFFER_THRESHOLD) {
+        await new Promise(r => setTimeout(r, VERIFY_POLL_INTERVAL));
       }
 
       transfer.dataChannel.send(payload.buffer);

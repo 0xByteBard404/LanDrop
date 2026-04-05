@@ -22,7 +22,10 @@ async fn main() {
         )
         .init();
 
-    let state = AppState::new(config.max_file_size_mb * 1024 * 1024);
+    let state = AppState::new(
+        config.max_file_size_mb * 1024 * 1024,
+        config.max_text_size_mb * 1024 * 1024,
+    );
 
     let local_ip = get_local_ip();
     let lan_url = local_ip.as_ref().map_or_else(
@@ -42,8 +45,14 @@ async fn main() {
             "/api/info",
             axum::routing::get({
                 let url = lan_url.clone();
-                move || async move {
-                    axum::Json(serde_json::json!({ "url": url }))
+                move |axum::extract::State(state): axum::extract::State<std::sync::Arc<AppState>>| async move {
+                    axum::Json(serde_json::json!({
+                        "url": url,
+                        "maxFileSize": state.max_file_size,
+                        "maxTextSize": state.max_text_size,
+                        "protocolVersion": signaling::PROTOCOL_VERSION,
+                        "maxNameLength": signaling::MAX_NAME_LENGTH,
+                    }))
                 }
             }),
         )
@@ -64,12 +73,13 @@ async fn main() {
         .await
         .unwrap_or_else(|e| panic!("Failed to bind port {}: {}", config.port, e));
 
-    tracing::info!("LanDrop v0.1.0 已启动！");
+    tracing::info!("LanDrop v{} 已启动！", env!("CARGO_PKG_VERSION"));
     tracing::info!("本机访问:    http://localhost:{}", config.port);
     if let Some(ip) = &local_ip {
         tracing::info!("局域网访问:  http://{}:{}", ip, config.port);
     }
     tracing::info!("文件大小上限: {} MB", config.max_file_size_mb);
+    tracing::info!("文本大小上限: {} MB", config.max_text_size_mb);
     tracing::info!("按 Ctrl+C 优雅退出");
 
     axum::serve(listener, app)

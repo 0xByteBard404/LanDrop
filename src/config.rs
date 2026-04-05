@@ -19,6 +19,10 @@ pub struct Config {
     /// 单文件大小上限 MB
     #[arg(short, long, default_value = "512")]
     pub max_file_size_mb: u64,
+
+    /// 文本消息大小上限 MB
+    #[arg(short = 't', long, default_value = "1")]
+    pub max_text_size_mb: u64,
 }
 
 #[derive(Clone)]

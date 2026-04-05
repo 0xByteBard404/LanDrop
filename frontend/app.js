@@ -123,7 +123,7 @@ selfInfoEl.addEventListener("click", () => {
   input.type = "text";
   input.value = currentName;
   input.className = "rename-input";
-  input.maxLength = 32;
+  input.maxLength = signaling.config?.maxNameLength || 32;
   input.placeholder = "输入新名称";
 
   const span = selfInfoEl;
@@ -135,7 +135,7 @@ selfInfoEl.addEventListener("click", () => {
 
   const finish = () => {
     const newName = input.value.trim();
-    if (newName && newName !== currentName && newName.length <= 32) {
+    if (newName && newName !== currentName && newName.length <= (signaling.config?.maxNameLength || 32)) {
       signaling.nodeInfo.name = newName;
       signaling.sendRename(newName);
       // Update session storage
@@ -169,7 +169,7 @@ signaling.onOfferFile = (msg) => {
 
 signaling.onMessage = (msg) => {
   if (msg.type === "error" && msg.code === "text_too_long") {
-    alert("文本超过 1MB 限制");
+    alert(`文本超过 ${formatSize(signaling.config?.maxTextSize ?? 0)} 限制`);
     return;
   }
   transfer.handleSignalingMessage(msg);
@@ -333,8 +333,9 @@ function renderPeers(peers) {
 async function sendFilesToPeer(peerId, files) {
   const fileArr = Array.from(files);
   const totalSize = fileArr.reduce((sum, f) => sum + f.size, 0);
-  if (totalSize > 512 * 1024 * 1024) {
-    alert(`所选文件总大小 ${formatSize(totalSize)} 超过 512 MB 限制`);
+  const maxFileSize = signaling.config?.maxFileSize ?? Infinity;
+  if (totalSize > maxFileSize) {
+    alert(`所选文件总大小 ${formatSize(totalSize)} 超过 ${formatSize(maxFileSize)} 限制`);
     return;
   }
 
@@ -499,8 +500,9 @@ textComposeInput.onkeydown = (e) => {
 textComposeSendBtn.onclick = async () => {
   const content = textComposeInput.value.trim();
   if (!content) return;
-  if (content.length > 1024 * 1024) {
-    alert("文本超过 1MB 限制");
+  const maxTextSize = signaling.config?.maxTextSize ?? Infinity;
+  if (content.length > maxTextSize) {
+    alert(`文本超过 ${formatSize(maxTextSize)} 限制`);
     return;
   }
 
@@ -653,4 +655,25 @@ qrCopyBtn.onclick = async () => {
 
 // --- Connect ---
 
-signaling.connect();
+async function init() {
+  try {
+    const res = await fetch("/api/info");
+    const data = await res.json();
+    signaling.config = {
+      maxFileSize: data.maxFileSize,
+      maxTextSize: data.maxTextSize,
+      protocolVersion: data.protocolVersion,
+      maxNameLength: data.maxNameLength,
+    };
+  } catch {
+    // Fallback defaults
+    signaling.config = {
+      maxFileSize: 512 * 1024 * 1024,
+      maxTextSize: 1024 * 1024,
+      protocolVersion: 1,
+      maxNameLength: 32,
+    };
+  }
+  signaling.connect();
+}
+init();

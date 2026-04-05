@@ -1,6 +1,12 @@
 /* ── LanDrop · Minimal Luxe Dark ── */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
+@font-face {
+  font-family: 'Outfit';
+  src: url('fonts/outfit-variable.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   --bg:        #0c0c0e;

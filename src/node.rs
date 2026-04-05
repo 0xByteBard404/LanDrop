@@ -20,13 +20,15 @@ pub struct NodeEntry {
 pub struct AppState {
     pub nodes: DashMap<NodeId, NodeEntry>,
     pub max_file_size: u64,
+    pub max_text_size: u64,
 }
 
 impl AppState {
-    pub fn new(max_file_size: u64) -> Arc<Self> {
+    pub fn new(max_file_size: u64, max_text_size: u64) -> Arc<Self> {
         Arc::new(Self {
             nodes: DashMap::new(),
             max_file_size,
+            max_text_size,
         })
     }
 
