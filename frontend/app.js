@@ -226,6 +226,9 @@ function updateTransferStatus(transferId, text, className) {
     status.className = `transfer-status ${className}`;
   }
 
+  const fill = card.querySelector(".transfer-progress-fill");
+  if (fill) fill.style.width = className === "success" ? "100%" : fill.style.width;
+
   const cancelBtn = card.querySelector(".transfer-cancel");
   if (cancelBtn) cancelBtn.remove();
 }

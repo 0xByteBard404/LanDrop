@@ -32,6 +32,15 @@ async fn main() {
                 axum::Json(serde_json::json!({"status": "ok"}))
             }),
         )
+        .route(
+            "/favicon.ico",
+            axum::routing::get(|| async {
+                (
+                    [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📡</text></svg>"#,
+                )
+            }),
+        )
         .fallback_service(ServeDir::new(&config.static_dir))
         .layer(CorsLayer::permissive())
         .with_state(state);
