@@ -2,7 +2,7 @@ const STORAGE_KEY = "landrop_identity";
 
 function loadIdentity() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
   return null;
@@ -10,7 +10,7 @@ function loadIdentity() {
 
 function saveIdentity(nodeId, name) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodeId, name }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ nodeId, name }));
   } catch {}
 }
 

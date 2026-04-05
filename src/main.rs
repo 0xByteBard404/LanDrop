@@ -22,7 +22,7 @@ async fn main() {
         )
         .init();
 
-    let state = AppState::new(config.max_file_size);
+    let state = AppState::new(config.max_file_size_mb * 1024 * 1024);
 
     let app = axum::Router::new()
         .route("/ws", axum::routing::get(signaling::ws_handler))
@@ -46,7 +46,7 @@ async fn main() {
     if let Some(ip) = &local_ip {
         tracing::info!("局域网访问:  http://{}:{}", ip, config.port);
     }
-    tracing::info!("文件大小上限: {} MB", config.max_file_size);
+    tracing::info!("文件大小上限: {} MB", config.max_file_size_mb);
     tracing::info!("按 Ctrl+C 优雅退出");
 
     axum::serve(listener, app)

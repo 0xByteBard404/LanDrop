@@ -84,10 +84,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let node_id = join.node_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let name = join.name.unwrap_or_else(crate::name_gen::generate_name);
+    let session_id = uuid::Uuid::new_v4().to_string();
 
     // If the client reused an old nodeId, remove stale entry (same device refresh)
-    if state.nodes.remove(&node_id).is_some() {
-        tracing::info!(node_id = %node_id, "移除旧条目（重连）");
+    let had_old = state.nodes.remove(&node_id);
+    if had_old.is_some() {
+        tracing::info!(node_id = %node_id, "移除旧条目（重连），剩余节点: {:?}", state.nodes.iter().map(|e| e.key().clone()).collect::<Vec<_>>());
     }
 
     // 3. Send joined response
@@ -111,7 +113,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         id: node_id.clone(),
         name: name.clone(),
     };
-    state.nodes.insert(node_id.clone(), NodeEntry { info, tx });
+    state.nodes.insert(node_id.clone(), NodeEntry { info, tx, session_id: session_id.clone() });
+
+    tracing::info!(node_id = %node_id, online_count = state.nodes.len(), "注册完成，当前在线节点: {:?}", state.nodes.iter().map(|e| e.key().clone()).collect::<Vec<_>>());
 
     // 6. Broadcast updated peers list
     broadcast_peers(&state, &node_id);
@@ -153,17 +157,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
-    // 8. Cleanup on disconnect
-    state.nodes.remove(&node_id);
-    tracing::info!(node_id = %node_id, name = %name, "节点离线");
+    // 8. Cleanup on disconnect (only if this session still owns the entry)
+    let removed = state.nodes.remove_if(&node_id, |_, entry| entry.session_id == session_id);
+    if removed.is_some() {
+        tracing::info!(node_id = %node_id, name = %name, "节点离线");
 
-    let leave = LeaveMsg {
-        msg_type: "leave".into(),
-        node_id: node_id.clone(),
-    };
-    let leave_str = serde_json::to_string(&leave).unwrap();
-    state.broadcast(&leave_str, Some(&node_id));
-    broadcast_peers(&state, &node_id);
+        let leave = LeaveMsg {
+            msg_type: "leave".into(),
+            node_id: node_id.clone(),
+        };
+        let leave_str = serde_json::to_string(&leave).unwrap();
+        state.broadcast(&leave_str, Some(&node_id));
+        broadcast_peers(&state, &node_id);
+    } else {
+        tracing::info!(node_id = %node_id, "旧会话断开，跳过清理（已被新会话替代）");
+    }
 }
 
 async fn wait_for_join(
@@ -229,8 +237,10 @@ async fn route_message(state: &Arc<AppState>, from_id: &NodeId, text: &str) {
 
     let msg_str = serde_json::to_string(&value).unwrap();
 
+    tracing::info!(from = %from_id, target = %target, msg_type = %msg_type, "路由消息");
+
     if !state.send_to(&target, &msg_str) {
-        tracing::warn!(target = %target, from = %from_id, "目标节点不存在");
+        tracing::warn!(target = %target, from = %from_id, "目标节点不存在, 当前在线: {:?}", state.nodes.iter().map(|e| e.key().clone()).collect::<Vec<_>>());
         let err = ErrorMsg {
             msg_type: "error".into(),
             code: "target_not_found".into(),

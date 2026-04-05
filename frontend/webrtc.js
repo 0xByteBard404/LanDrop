@@ -280,73 +280,86 @@ export class FileTransfer {
 
     const { file, peerId, controlChannel, dataChannel } = transfer;
 
-    // Compute SHA-256
-    const fileBuffer = await file.arrayBuffer();
-    const fileHash = await sha256Hex(fileBuffer);
+    try {
+      // Compute SHA-256
+      const fileBuffer = await file.arrayBuffer();
+      const fileHash = await sha256Hex(fileBuffer);
 
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-    // Send start message via control channel
-    controlChannel.send(
-      JSON.stringify({
-        type: "start",
-        transferId,
-        fileName: file.name,
-        fileSize: file.size,
-        mimeType: file.type || "application/octet-stream",
-        totalChunks,
-        chunkSize: CHUNK_SIZE,
-        fileHash,
-      })
-    );
+      // Send start message via control channel
+      controlChannel.send(
+        JSON.stringify({
+          type: "start",
+          transferId,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || "application/octet-stream",
+          totalChunks,
+          chunkSize: CHUNK_SIZE,
+          fileHash,
+        })
+      );
 
-    // Send chunks via data channel
-    transfer.state = "sending";
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const threshold = isSafari ? 1024 * 1024 : 4 * 1024 * 1024;
+      // Send chunks via data channel
+      transfer.state = "sending";
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      const threshold = isSafari ? 1024 * 1024 : 4 * 1024 * 1024;
 
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const chunkData = fileBuffer.slice(start, end);
+      for (let i = 0; i < totalChunks; i++) {
+        // Check if transfer was cancelled
+        if (!this.activeTransfers.has(transferId)) return;
 
-      // Prefix with 4-byte chunk index (big-endian)
-      const header = new ArrayBuffer(4);
-      new DataView(header).setUint32(0, i, false);
-      const payload = new Uint8Array(4 + chunkData.byteLength);
-      payload.set(new Uint8Array(header), 0);
-      payload.set(new Uint8Array(chunkData), 4);
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunkData = fileBuffer.slice(start, end);
 
-      // Flow control
-      if (dataChannel.bufferedAmount > threshold) {
-        await new Promise((resolve) => {
-          dataChannel.addEventListener("bufferedamountlow", resolve, { once: true });
-        });
+        // Prefix with 4-byte chunk index (big-endian)
+        const header = new ArrayBuffer(4);
+        new DataView(header).setUint32(0, i, false);
+        const payload = new Uint8Array(4 + chunkData.byteLength);
+        payload.set(new Uint8Array(header), 0);
+        payload.set(new Uint8Array(chunkData), 4);
+
+        // Flow control
+        if (dataChannel.bufferedAmount > threshold) {
+          await new Promise((resolve) => {
+            dataChannel.addEventListener("bufferedamountlow", resolve, { once: true });
+          });
+        }
+
+        dataChannel.send(payload.buffer);
+
+        // Progress
+        if (this.onProgress) {
+          this.onProgress(transferId, i + 1, totalChunks);
+        }
       }
 
-      dataChannel.send(payload.buffer);
+      // Wait for all data to be sent
+      while (dataChannel.bufferedAmount > 0) {
+        if (!this.activeTransfers.has(transferId)) return;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
 
-      // Progress
-      if (this.onProgress) {
-        this.onProgress(transferId, i + 1, totalChunks);
+      // Send complete via control channel
+      if (!this.activeTransfers.has(transferId)) return;
+      controlChannel.send(
+        JSON.stringify({
+          type: "complete",
+          transferId,
+          totalChunks,
+        })
+      );
+
+      transfer.state = "verifying";
+    } catch (e) {
+      // Transfer was cancelled or channel closed — silently ignore
+      if (this.activeTransfers.has(transferId)) {
+        this._cleanup(transferId);
+        if (this.onTransferError) this.onTransferError(transferId, "channel_closed");
       }
     }
-
-    // Wait for all data to be sent
-    while (dataChannel.bufferedAmount > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-
-    // Send complete via control channel
-    controlChannel.send(
-      JSON.stringify({
-        type: "complete",
-        transferId,
-        totalChunks,
-      })
-    );
-
-    transfer.state = "verifying";
   }
 
   // --- Receiver: handle incoming SDP offer ---
@@ -549,6 +562,7 @@ export class FileTransfer {
     if (transfer) {
       this.signaling.sendCancelTransfer(transfer.peerId, transferId);
       this._cleanup(transferId);
+      if (this.onTransferError) this.onTransferError(transferId, "cancelled");
     }
   }
 

@@ -14,6 +14,7 @@ pub struct NodeInfo {
 pub struct NodeEntry {
     pub info: NodeInfo,
     pub tx: mpsc::UnboundedSender<String>,
+    pub session_id: String,
 }
 
 pub struct AppState {
