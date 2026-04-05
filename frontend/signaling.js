@@ -35,9 +35,15 @@ export class SignalingClient {
 
   async initCryptoKeys() {
     if (this.privateKey) return;
-    const { publicKeyBase64, privateKey } = await initCrypto();
-    this.publicKeyBase64 = publicKeyBase64;
-    this.privateKey = privateKey;
+    try {
+      const { publicKeyBase64, privateKey } = await initCrypto();
+      this.publicKeyBase64 = publicKeyBase64;
+      this.privateKey = privateKey;
+    } catch (e) {
+      console.warn("E2E 加密不可用:", e.message);
+      this.publicKeyBase64 = null;
+      this.privateKey = null;
+    }
   }
 
   connect(url = `ws://${location.host}/ws`) {

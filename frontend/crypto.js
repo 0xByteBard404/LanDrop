@@ -35,6 +35,11 @@ async function deriveAESKey(peerPublicKey, myPrivateKey) {
 }
 
 export async function initCrypto() {
+  // crypto.subtle requires secure context (HTTPS or localhost)
+  if (!crypto || !crypto.subtle) {
+    return { publicKeyBase64: null, privateKey: null };
+  }
+
   // Try load from sessionStorage (survives reconnect)
   try {
     const saved = sessionStorage.getItem(STORAGE_KEY);
