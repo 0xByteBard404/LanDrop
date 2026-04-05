@@ -316,6 +316,47 @@ h2 {
 
 /* ── Text compose ── */
 
+.secure-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  margin-bottom: 4px;
+  user-select: none;
+}
+
+.secure-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.secure-toggle input:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.secure-toggle-label {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.secure-toggle-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.lock-icon {
+  font-size: 11px;
+}
+
+.message-encrypted {
+  border-left-color: #a78bfa;
+}
+
 #text-compose-input {
   width: 100%;
   min-height: 120px;

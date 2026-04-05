@@ -1,5 +1,6 @@
 import { SignalingClient } from "./signaling.js";
 import { FileTransfer } from "./webrtc.js";
+import { encryptText, decryptText } from "./crypto.js";
 
 const signaling = new SignalingClient();
 const transfer = new FileTransfer(signaling);
@@ -23,6 +24,8 @@ const textComposeTitle = document.getElementById("text-compose-title");
 const textComposeInput = document.getElementById("text-compose-input");
 const textComposeSendBtn = document.getElementById("text-compose-send");
 const textComposeCancelBtn = document.getElementById("text-compose-cancel");
+const textComposeSecure = document.getElementById("text-compose-secure");
+const secureHint = document.getElementById("secure-hint");
 const textReceiveDialog = document.getElementById("text-receive-dialog");
 const textReceiveTitle = document.getElementById("text-receive-title");
 const textReceiveContent = document.getElementById("text-receive-content");
@@ -271,6 +274,18 @@ function openTextCompose(peerId, peerName) {
   textComposeTargetId = peerId;
   textComposeTitle.textContent = `发送文本给 ${peerName}`;
   textComposeInput.value = "";
+  textComposeSecure.checked = false;
+
+  // Check if peer has public key
+  const peer = signaling.peers.get(peerId);
+  if (peer && peer.pubKey) {
+    textComposeSecure.disabled = false;
+    secureHint.textContent = "";
+  } else {
+    textComposeSecure.disabled = true;
+    secureHint.textContent = "对方不支持安全传输";
+  }
+
   textComposeDialog.classList.remove("hidden");
   setTimeout(() => textComposeInput.focus(), 50);
 }
@@ -287,7 +302,7 @@ textComposeInput.onkeydown = (e) => {
   }
 };
 
-textComposeSendBtn.onclick = () => {
+textComposeSendBtn.onclick = async () => {
   const content = textComposeInput.value.trim();
   if (!content) return;
   if (content.length > 1024 * 1024) {
@@ -297,19 +312,49 @@ textComposeSendBtn.onclick = () => {
 
   const textId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
   const peerName = signaling.peers.get(textComposeTargetId)?.name || "未知设备";
-  signaling.sendText(textComposeTargetId, textId, content);
-  addMessageCard(textId, content, "sender", peerName);
+  const secure = textComposeSecure.checked && !textComposeSecure.disabled;
+
+  if (secure) {
+    try {
+      const peer = signaling.peers.get(textComposeTargetId);
+      const { content: cipher, iv } = await encryptText(content, peer.pubKey, signaling.privateKey);
+      signaling.sendText(textComposeTargetId, textId, cipher, true, iv);
+      addMessageCard(textId, content, "sender", peerName, true);
+    } catch (e) {
+      alert("加密失败: " + e.message);
+      return;
+    }
+  } else {
+    signaling.sendText(textComposeTargetId, textId, content);
+    addMessageCard(textId, content, "sender", peerName, false);
+  }
 
   textComposeDialog.classList.add("hidden");
   textComposeTargetId = null;
 };
 
-function showReceivedText(msg) {
+async function showReceivedText(msg) {
   const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
-  addMessageCard(msg.textId, msg.content, "receiver", peerName);
+  let content = msg.content;
+  let encrypted = false;
 
-  textReceiveTitle.textContent = `来自 ${peerName} 的文本`;
-  textReceiveContent.textContent = msg.content;
+  if (msg.encrypted && signaling.privateKey) {
+    try {
+      const peer = signaling.peers.get(msg.from);
+      if (peer && peer.pubKey) {
+        content = await decryptText(msg.content, msg.iv, peer.pubKey, signaling.privateKey);
+        encrypted = true;
+      }
+    } catch (e) {
+      console.error("解密失败:", e);
+      content = "[解密失败]";
+    }
+  }
+
+  addMessageCard(msg.textId, content, "receiver", peerName, encrypted);
+
+  textReceiveTitle.textContent = `来自 ${peerName} 的文本` + (encrypted ? " (安全)" : "");
+  textReceiveContent.textContent = content;
   textReceiveDialog.classList.remove("hidden");
 }
 
@@ -336,20 +381,21 @@ textReceiveCloseBtn.onclick = () => {
   textReceiveDialog.classList.add("hidden");
 };
 
-function addMessageCard(textId, content, role, peerName) {
+function addMessageCard(textId, content, role, peerName, encrypted = false) {
   noMessagesEl.style.display = "none";
 
   const card = document.createElement("div");
-  card.className = `message-card message-${role}`;
+  card.className = `message-card message-${role}` + (encrypted ? " message-encrypted" : "");
   card.id = `message-${textId}`;
 
   const preview = content.length > 100 ? content.slice(0, 100) + "..." : content;
   const arrow = role === "sender" ? "\u2191" : "\u2193";
   const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  const lock = encrypted ? ' <span class="lock-icon">\uD83D\uDD12</span>' : "";
 
   card.innerHTML = `
     <div class="message-header">
-      <span class="message-direction"><span class="message-arrow">${arrow}</span> ${escapeHtml(peerName)}</span>
+      <span class="message-direction"><span class="message-arrow">${arrow}</span> ${escapeHtml(peerName)}${lock}</span>
       <span class="message-time">${time}</span>
     </div>
     <div class="message-preview">${escapeHtml(preview)}</div>
@@ -357,7 +403,7 @@ function addMessageCard(textId, content, role, peerName) {
 
   card.onclick = () => {
     textReceiveContent.textContent = content;
-    textReceiveTitle.textContent = (role === "sender" ? "发给 " : "来自 ") + peerName;
+    textReceiveTitle.textContent = (role === "sender" ? "发给 " : "来自 ") + peerName + (encrypted ? " (安全)" : "");
     textReceiveCopyBtn.textContent = "复制";
     textReceiveDialog.classList.remove("hidden");
   };

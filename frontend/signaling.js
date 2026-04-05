@@ -1,3 +1,5 @@
+import { initCrypto } from "./crypto.js";
+
 const STORAGE_KEY = "landrop_identity";
 
 function loadIdentity() {
@@ -27,6 +29,15 @@ export class SignalingClient {
     this.onDisconnect = null;
     this.reconnectTimer = null;
     this.reconnectDelay = 1000;
+    this.publicKeyBase64 = null;
+    this.privateKey = null;
+  }
+
+  async initCryptoKeys() {
+    if (this.privateKey) return;
+    const { publicKeyBase64, privateKey } = await initCrypto();
+    this.publicKeyBase64 = publicKeyBase64;
+    this.privateKey = privateKey;
   }
 
   connect(url = `ws://${location.host}/ws`) {
@@ -37,10 +48,11 @@ export class SignalingClient {
   _doConnect() {
     this.ws = new WebSocket(this.wsUrl);
 
-    this.ws.onopen = () => {
+    this.ws.onopen = async () => {
       this.reconnectDelay = 1000;
+      await this.initCryptoKeys();
       const identity = loadIdentity();
-      const joinMsg = { type: "join", protocolVersion: 1 };
+      const joinMsg = { type: "join", protocolVersion: 1, pubKey: this.publicKeyBase64 };
       if (identity) {
         joinMsg.nodeId = identity.nodeId;
         joinMsg.name = identity.name;
@@ -168,7 +180,12 @@ export class SignalingClient {
     this.send({ type: "ice-candidate", to, transferId, candidate });
   }
 
-  sendText(to, textId, content) {
-    this.send({ type: "send-text", to, textId, content });
+  sendText(to, textId, content, encrypted = false, iv = null) {
+    const msg = { type: "send-text", to, textId, content };
+    if (encrypted) {
+      msg.encrypted = true;
+      msg.iv = iv;
+    }
+    this.send(msg);
   }
 }

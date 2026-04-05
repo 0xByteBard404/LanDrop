@@ -6,7 +6,7 @@
   <title>LanDrop</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <div id="app">
@@ -51,6 +51,11 @@
     <div id="text-compose-dialog" class="dialog hidden">
       <div class="dialog-content">
         <h3 id="text-compose-title">发送文本</h3>
+        <label class="secure-toggle">
+          <input type="checkbox" id="text-compose-secure">
+          <span class="secure-toggle-label">安全传输 (E2E)</span>
+          <span class="secure-toggle-hint" id="secure-hint"></span>
+        </label>
         <textarea id="text-compose-input" placeholder="输入文本、链接...&#10;Ctrl+Enter 发送" rows="5"></textarea>
         <div class="dialog-actions">
           <button id="text-compose-cancel" class="btn btn-secondary">取消</button>

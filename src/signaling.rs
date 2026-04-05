@@ -18,6 +18,8 @@ struct JoinPayload {
     node_id: Option<String>,
     #[serde(rename = "protocolVersion")]
     protocol_version: Option<u32>,
+    #[serde(rename = "pubKey")]
+    pub_key: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -112,6 +114,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let info = NodeInfo {
         id: node_id.clone(),
         name: name.clone(),
+        pub_key: join.pub_key.clone(),
     };
     state.nodes.insert(node_id.clone(), NodeEntry { info, tx, session_id: session_id.clone() });
 
