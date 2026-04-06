@@ -346,3 +346,197 @@ async fn send_json<T: Serialize>(
     let text = serde_json::to_string(data).map_err(|_| ())?;
     sink.send(Message::Text(text.into())).await.map_err(|_| ())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::NodeEntry;
+    use tokio::sync::mpsc;
+
+    fn make_node(id: &str, name: &str) -> (NodeEntry, mpsc::UnboundedReceiver<String>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let entry = NodeEntry {
+            info: crate::node::NodeInfo {
+                id: id.to_string(),
+                name: name.to_string(),
+            },
+            tx,
+            session_id: uuid::Uuid::new_v4().to_string(),
+        };
+        (entry, rx)
+    }
+
+    #[tokio::test]
+    async fn route_message_valid() {
+        let state = AppState::new(1024 * 1024, 1024);
+        let (entry, mut rx) = make_node("target", "Cat");
+        state.nodes.insert("target".to_string(), entry);
+
+        let msg = r#"{"type":"chat","to":"target","content":"hi"}"#;
+        route_message(&state, &"sender".to_string(), msg).await;
+
+        let received = rx.try_recv().unwrap();
+        let v: Value = serde_json::from_str(&received).unwrap();
+        assert_eq!(v["type"], "chat");
+        assert_eq!(v["to"], "target");
+        assert_eq!(v["from"], "sender"); // force-replaced
+    }
+
+    #[tokio::test]
+    async fn route_message_force_replaces_from() {
+        let state = AppState::new(1024 * 1024, 1024);
+        let (entry, mut rx) = make_node("target", "Cat");
+        state.nodes.insert("target".to_string(), entry);
+
+        // Client tries to spoof from field
+        let msg = r#"{"type":"offer-file","to":"target","from":"spoofed","fileName":"test.txt","fileSize":100}"#;
+        route_message(&state, &"real_sender".to_string(), msg).await;
+
+        let received = rx.try_recv().unwrap();
+        let v: Value = serde_json::from_str(&received).unwrap();
+        assert_eq!(v["from"], "real_sender");
+    }
+
+    #[tokio::test]
+    async fn route_message_invalid_json_ignored() {
+        let state = AppState::new(1024 * 1024, 1024);
+        let (entry, mut rx) = make_node("target", "Cat");
+        state.nodes.insert("target".to_string(), entry);
+
+        route_message(&state, &"sender".to_string(), "not json").await;
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn route_message_no_to_field_ignored() {
+        let state = AppState::new(1024 * 1024, 1024);
+        let (entry, mut rx) = make_node("target", "Cat");
+        state.nodes.insert("target".to_string(), entry);
+
+        let msg = r#"{"type":"chat","content":"hi"}"#;
+        route_message(&state, &"sender".to_string(), msg).await;
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn route_message_file_too_large() {
+        let state = AppState::new(100, 1024); // max file 100 bytes
+        let (sender_entry, mut sender_rx) = make_node("sender", "Fox");
+        state.nodes.insert("sender".to_string(), sender_entry);
+
+        let msg = r#"{"type":"offer-file","to":"target","fileSize":200}"#;
+        route_message(&state, &"sender".to_string(), msg).await;
+
+        let err_msg = sender_rx.try_recv().unwrap();
+        let v: Value = serde_json::from_str(&err_msg).unwrap();
+        assert_eq!(v["type"], "error");
+        assert_eq!(v["code"], "file_too_large");
+    }
+
+    #[tokio::test]
+    async fn route_message_text_too_long() {
+        let state = AppState::new(1024 * 1024, 10); // max text 10 bytes
+        let (sender_entry, mut sender_rx) = make_node("sender", "Fox");
+        state.nodes.insert("sender".to_string(), sender_entry);
+
+        let long_text = "a".repeat(20);
+        let msg = &format!(r#"{{"type":"send-text","to":"target","content":"{}"}}"#, long_text);
+        route_message(&state, &"sender".to_string(), msg).await;
+
+        let err_msg = sender_rx.try_recv().unwrap();
+        let v: Value = serde_json::from_str(&err_msg).unwrap();
+        assert_eq!(v["type"], "error");
+        assert_eq!(v["code"], "text_too_long");
+    }
+
+    #[tokio::test]
+    async fn route_message_target_not_found() {
+        let state = AppState::new(1024 * 1024, 1024);
+        let (sender_entry, mut sender_rx) = make_node("sender", "Fox");
+        state.nodes.insert("sender".to_string(), sender_entry);
+
+        let msg = r#"{"type":"chat","to":"ghost","content":"hi"}"#;
+        route_message(&state, &"sender".to_string(), msg).await;
+
+        let err_msg = sender_rx.try_recv().unwrap();
+        let v: Value = serde_json::from_str(&err_msg).unwrap();
+        assert_eq!(v["type"], "error");
+        assert_eq!(v["code"], "target_not_found");
+    }
+
+    #[tokio::test]
+    async fn broadcast_peers_sends_to_all_except_excluded() {
+        let state = AppState::new(1024 * 1024, 1024);
+        let (e1, mut rx1) = make_node("n1", "Fox");
+        let (e2, mut rx2) = make_node("n2", "Cat");
+        let (e3, mut rx3) = make_node("n3", "Dog");
+        state.nodes.insert("n1".to_string(), e1);
+        state.nodes.insert("n2".to_string(), e2);
+        state.nodes.insert("n3".to_string(), e3);
+
+        broadcast_peers(&state, &"n1".to_string());
+
+        // n1 excluded, should not receive
+        assert!(rx1.try_recv().is_err());
+
+        // n2 receives peers list excluding itself (contains n1 and n3)
+        let msg2: Value = serde_json::from_str(&rx2.try_recv().unwrap()).unwrap();
+        assert_eq!(msg2["type"], "peers");
+        let list2 = msg2["list"].as_array().unwrap();
+        assert_eq!(list2.len(), 2); // n1 and n3 (n2 excluded from its own list)
+        let ids2: Vec<&str> = list2.iter().map(|v| v["id"].as_str().unwrap()).collect();
+        assert!(ids2.contains(&"n1"));
+        assert!(ids2.contains(&"n3"));
+
+        // n3 receives peers list excluding itself (contains n1 and n2)
+        let msg3: Value = serde_json::from_str(&rx3.try_recv().unwrap()).unwrap();
+        let list3 = msg3["list"].as_array().unwrap();
+        assert_eq!(list3.len(), 2);
+        let ids3: Vec<&str> = list3.iter().map(|v| v["id"].as_str().unwrap()).collect();
+        assert!(ids3.contains(&"n1"));
+        assert!(ids3.contains(&"n2"));
+    }
+
+    #[test]
+    fn join_payload_deserialize() {
+        let json = r#"{"type":"join","name":"Fox","nodeId":"abc","protocolVersion":1}"#;
+        let payload: JoinPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.name, Some("Fox".to_string()));
+        assert_eq!(payload.node_id, Some("abc".to_string()));
+        assert_eq!(payload.protocol_version, Some(1));
+    }
+
+    #[test]
+    fn join_payload_minimal() {
+        let json = r#"{"type":"join"}"#;
+        let payload: JoinPayload = serde_json::from_str(json).unwrap();
+        assert!(payload.name.is_none());
+        assert!(payload.node_id.is_none());
+        assert!(payload.protocol_version.is_none());
+    }
+
+    #[test]
+    fn joined_msg_serializes_correctly() {
+        let msg = JoinedMsg {
+            msg_type: "joined".into(),
+            node_id: "abc".into(),
+            name: "Fox".into(),
+            peers: vec![crate::node::NodeInfo {
+                id: "other".into(),
+                name: "Cat".into(),
+            }],
+            max_file_size: 1024,
+            max_text_size: 512,
+            protocol_version: 1,
+            max_name_length: 32,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let v: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["type"], "joined");
+        assert_eq!(v["nodeId"], "abc");
+        assert_eq!(v["name"], "Fox");
+        assert_eq!(v["maxFileSize"], 1024);
+        assert_eq!(v["maxTextSize"], 512);
+        assert_eq!(v["protocolVersion"], 1);
+    }
+}

@@ -62,3 +62,62 @@ impl std::str::FromStr for LogLevel {
         Ok(LogLevel(level))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config() {
+        let config = Config::try_parse_from(["lan-drop"]).unwrap();
+        assert_eq!(config.port, 3000);
+        assert_eq!(config.static_dir, "./frontend");
+        assert_eq!(config.max_file_size_mb, 512);
+        assert_eq!(config.max_text_size_mb, 1);
+    }
+
+    #[test]
+    fn custom_port() {
+        let config = Config::try_parse_from(["lan-drop", "--port", "8080"]).unwrap();
+        assert_eq!(config.port, 8080);
+    }
+
+    #[test]
+    fn custom_static_dir() {
+        let config = Config::try_parse_from(["lan-drop", "--static-dir", "/tmp/www"]).unwrap();
+        assert_eq!(config.static_dir, "/tmp/www");
+    }
+
+    #[test]
+    fn custom_file_size_limit() {
+        let config = Config::try_parse_from(["lan-drop", "--max-file-size-mb", "1024"]).unwrap();
+        assert_eq!(config.max_file_size_mb, 1024);
+    }
+
+    #[test]
+    fn log_level_from_str_valid() {
+        for level_str in &["trace", "debug", "info", "warn", "error"] {
+            let level: LogLevel = level_str.parse().unwrap_or_else(|_| panic!("{} 应为有效级别", level_str));
+            assert_eq!(level.as_ref(), *level_str);
+        }
+    }
+
+    #[test]
+    fn log_level_from_str_invalid() {
+        let result = "invalid".parse::<LogLevel>();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn log_level_display() {
+        let level = LogLevel(tracing::Level::INFO);
+        assert_eq!(format!("{}", level), "INFO");
+    }
+
+    #[test]
+    fn log_level_into_string() {
+        let level = LogLevel(tracing::Level::WARN);
+        let s: String = level.into();
+        assert_eq!(s, "WARN");
+    }
+}
