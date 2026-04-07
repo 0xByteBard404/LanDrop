@@ -26,17 +26,23 @@ pub struct Config {
 }
 
 impl Config {
-    /// Get the static dir, defaulting to `./frontend` relative to the exe location.
+    /// Get the static dir.
+    /// If not specified via CLI, tries exe-relative `frontend/` first,
+    /// then falls back to cwd-relative `./frontend` (for development).
     pub fn static_dir(&self) -> String {
         if let Some(dir) = &self.static_dir {
             return dir.clone();
         }
-        // Default: ./frontend relative to the exe directory
+        // Try exe-relative path first (for packaged distribution)
         if let Ok(exe) = std::env::current_exe() {
             if let Some(parent) = exe.parent() {
-                return parent.join("frontend").to_string_lossy().to_string();
+                let path = parent.join("frontend");
+                if path.exists() {
+                    return path.to_string_lossy().to_string();
+                }
             }
         }
+        // Fall back to cwd-relative (for development with cargo run)
         "./frontend".to_string()
     }
 }
