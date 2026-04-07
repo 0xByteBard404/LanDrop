@@ -60,6 +60,7 @@ jobs:
 
       - name: Package (Windows)
         if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
         run: |
           mkdir dist
           cp target/${{ matrix.target }}/release/lan-drop.exe dist/
