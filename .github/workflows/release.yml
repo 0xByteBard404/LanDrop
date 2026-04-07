@@ -65,7 +65,6 @@ jobs:
           mkdir dist
           cp target/${{ matrix.target }}/release/lan-drop.exe dist/
           cp target/${{ matrix.target }}/release/lan-drop-tray.exe dist/
-          cp -r frontend dist/frontend
           cp README.md LICENSE dist/
           cd dist && 7z a ../${{ matrix.artifact }} .
 
@@ -74,7 +73,6 @@ jobs:
         run: |
           mkdir dist
           cp target/${{ matrix.target }}/release/lan-drop dist/
-          cp -r frontend dist/frontend
           cp README.md LICENSE dist/
           cd dist && tar czf ../${{ matrix.artifact }} .
 
