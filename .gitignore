@@ -1,7 +1,35 @@
-/target
+# Build output
+/target/
+debug/
+*.pdb
+
+# Rust
+**/*.rs.bk
+
+# Node.js (icon build tooling)
+node_modules/
+package.json
+package-lock.json
+
+# OS
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor / IDE
 *.swp
 *.swo
-.DS_Store
+*~
+.idea/
+.vscode/
+*.iml
+*.sublime-*
+
+# Claude Code
 .claude/
+
+# Project
 docs/
-node_modules/
+landrop.log
