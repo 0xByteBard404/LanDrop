@@ -9,8 +9,8 @@ pub struct Config {
     pub port: u16,
 
     /// 前端静态文件目录
-    #[arg(short, long, default_value = "./frontend")]
-    pub static_dir: String,
+    #[arg(short, long)]
+    pub static_dir: Option<String>,
 
     /// 日志级别
     #[arg(short, long, default_value = "info")]
@@ -23,6 +23,22 @@ pub struct Config {
     /// 文本消息大小上限 MB
     #[arg(short = 't', long, default_value = "1")]
     pub max_text_size_mb: u64,
+}
+
+impl Config {
+    /// Get the static dir, defaulting to `./frontend` relative to the exe location.
+    pub fn static_dir(&self) -> String {
+        if let Some(dir) = &self.static_dir {
+            return dir.clone();
+        }
+        // Default: ./frontend relative to the exe directory
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                return parent.join("frontend").to_string_lossy().to_string();
+            }
+        }
+        "./frontend".to_string()
+    }
 }
 
 #[derive(Clone)]
@@ -71,7 +87,7 @@ mod tests {
     fn default_config() {
         let config = Config::try_parse_from(["lan-drop"]).unwrap();
         assert_eq!(config.port, 3000);
-        assert_eq!(config.static_dir, "./frontend");
+        assert!(config.static_dir.is_none());
         assert_eq!(config.max_file_size_mb, 512);
         assert_eq!(config.max_text_size_mb, 1);
     }
@@ -85,7 +101,7 @@ mod tests {
     #[test]
     fn custom_static_dir() {
         let config = Config::try_parse_from(["lan-drop", "--static-dir", "/tmp/www"]).unwrap();
-        assert_eq!(config.static_dir, "/tmp/www");
+        assert_eq!(config.static_dir(), "/tmp/www");
     }
 
     #[test]

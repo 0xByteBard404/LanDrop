@@ -22,7 +22,7 @@ pub async fn run_server(config: Config) -> (String, tokio::sync::oneshot::Sender
         |ip| format!("http://{}:{}", ip, config.port),
     );
 
-    let app = build_app(state, &lan_url);
+    let app = build_app(state, &lan_url, &config.static_dir());
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", config.port))
         .await
@@ -51,7 +51,7 @@ pub async fn run_server(config: Config) -> (String, tokio::sync::oneshot::Sender
 }
 
 /// Build the axum Router with all routes.
-pub fn build_app(state: Arc<AppState>, lan_url: &str) -> axum::Router {
+pub fn build_app(state: Arc<AppState>, lan_url: &str, static_dir: &str) -> axum::Router {
     let lan_url = lan_url.to_string();
     axum::Router::new()
         .route("/ws", axum::routing::get(signaling::ws_handler))
@@ -85,7 +85,7 @@ pub fn build_app(state: Arc<AppState>, lan_url: &str) -> axum::Router {
                 )
             }),
         )
-        .fallback_service(ServeDir::new("./frontend"))
+        .fallback_service(ServeDir::new(static_dir))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
