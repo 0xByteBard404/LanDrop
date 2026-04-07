@@ -35,7 +35,7 @@ tokio-tungstenite = "0.26"
 reqwest = { version = "0.12", features = ["json"] }
 
 [build-dependencies]
-winres = "0.1"
+winresource = "0.1"
 
 [[bin]]
 name = "lan-drop"
