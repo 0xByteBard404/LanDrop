@@ -1,11 +1,17 @@
 use crate::config::Config;
 use crate::node::AppState;
 use crate::signaling;
+use axum::http::{header, StatusCode};
+use rust_embed::Embed;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
+
+/// Embedded frontend assets — compiled into the binary at build time.
+#[derive(Embed)]
+#[folder = "frontend/"]
+struct FrontendAssets;
 
 /// Start the axum server with graceful shutdown support.
 ///
@@ -22,7 +28,7 @@ pub async fn run_server(config: Config) -> (String, tokio::sync::oneshot::Sender
         |ip| format!("http://{}:{}", ip, config.port),
     );
 
-    let app = build_app(state, &lan_url, &config.static_dir());
+    let app = build_app(state, &lan_url);
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", config.port))
         .await
@@ -51,7 +57,7 @@ pub async fn run_server(config: Config) -> (String, tokio::sync::oneshot::Sender
 }
 
 /// Build the axum Router with all routes.
-pub fn build_app(state: Arc<AppState>, lan_url: &str, static_dir: &str) -> axum::Router {
+pub fn build_app(state: Arc<AppState>, lan_url: &str) -> axum::Router {
     let lan_url = lan_url.to_string();
     axum::Router::new()
         .route("/ws", axum::routing::get(signaling::ws_handler))
@@ -76,18 +82,42 @@ pub fn build_app(state: Arc<AppState>, lan_url: &str, static_dir: &str) -> axum:
                 }
             }),
         )
-        .route(
-            "/favicon.ico",
-            axum::routing::get(|| async {
-                (
-                    [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
-                    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📡</text></svg>"#,
-                )
-            }),
-        )
-        .fallback_service(ServeDir::new(static_dir))
+        .fallback(serve_embedded_file)
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+/// Serve embedded frontend files.
+async fn serve_embedded_file(axum::extract::Path(path): axum::extract::Path<String>) -> impl axum::response::IntoResponse {
+    // Try exact path first, then path with /index.html for SPA-like behavior
+    let file = FrontendAssets::get(&path)
+        .or_else(|| FrontendAssets::get(&format!("{}/index.html", path)));
+
+    match file {
+        Some(file) => {
+            let mime_type = mime_guess::from_path(&path).first_or_octet_stream().to_string();
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, mime_type)],
+                file.data.to_vec(),
+            )
+        }
+        None => {
+            // Fallback to index.html for root or unknown paths
+            match FrontendAssets::get("index.html") {
+                Some(file) => (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "text/html; charset=utf-8".to_string())],
+                    file.data.to_vec(),
+                ),
+                None => (
+                    StatusCode::NOT_FOUND,
+                    [(header::CONTENT_TYPE, "text/plain".to_string())],
+                    "404 Not Found".as_bytes().to_vec(),
+                ),
+            }
+        }
+    }
 }
 
 /// Get the first non-loopback IPv4 address of this machine.
