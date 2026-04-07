@@ -88,14 +88,19 @@ pub fn build_app(state: Arc<AppState>, lan_url: &str) -> axum::Router {
 }
 
 /// Serve embedded frontend files.
-async fn serve_embedded_file(axum::extract::Path(path): axum::extract::Path<String>) -> impl axum::response::IntoResponse {
-    // Try exact path first, then path with /index.html for SPA-like behavior
-    let file = FrontendAssets::get(&path)
+async fn serve_embedded_file(req: axum::extract::Request) -> impl axum::response::IntoResponse {
+    let path = req.uri().path().trim_start_matches('/');
+
+    // Root path → index.html
+    let path = if path.is_empty() { "index.html" } else { path };
+
+    // Try exact path first, then path + /index.html
+    let file = FrontendAssets::get(path)
         .or_else(|| FrontendAssets::get(&format!("{}/index.html", path)));
 
     match file {
         Some(file) => {
-            let mime_type = mime_guess::from_path(&path).first_or_octet_stream().to_string();
+            let mime_type = mime_guess::from_path(path).first_or_octet_stream().to_string();
             (
                 StatusCode::OK,
                 [(header::CONTENT_TYPE, mime_type)],
@@ -103,7 +108,7 @@ async fn serve_embedded_file(axum::extract::Path(path): axum::extract::Path<Stri
             )
         }
         None => {
-            // Fallback to index.html for root or unknown paths
+            // Fallback to index.html
             match FrontendAssets::get("index.html") {
                 Some(file) => (
                     StatusCode::OK,
