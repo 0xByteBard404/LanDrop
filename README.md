@@ -35,12 +35,24 @@
 
 ## 快速开始
 
-### 前置条件
+### 从 Release 下载（无需 Rust 环境）
 
-- Rust 1.70+
-- 局域网环境
+1. 前往 [Releases](../../releases) 下载对应平台包
+2. 解压后运行：
 
-### 运行
+```bash
+# Windows — 双击 lan-drop-tray.exe 即可（自动打开浏览器，系统托盘运行）
+# 或使用命令行模式：
+lan-drop.exe
+
+# macOS / Linux
+chmod +x lan-drop
+./lan-drop
+```
+
+### 从源码构建
+
+**前置条件**：Rust 1.70+、局域网环境
 
 ```bash
 cargo run
@@ -70,11 +82,21 @@ LanDrop v0.1.0 已启动！
 
 ```
 src/
-  main.rs          # 入口，HTTP 服务器，静态文件托管
+  main.rs          # 入口（命令行模式）
+  lib.rs           # Rust 模块入口
   config.rs        # CLI 参数解析
+  server.rs        # 服务器构建与启动
   signaling.rs     # WebSocket 信令处理，消息路由
   node.rs          # 节点注册表，状态管理
   name_gen.rs      # 随机设备名生成
+
+src/bin/
+  tray.rs          # Windows 系统托盘模式入口
+
+tests/
+  api_routes.rs    # API 路由测试
+  signaling_flow.rs # 信令流程测试
+  multi_node.rs    # 多节点交互测试
 
 frontend/
   index.html       # 页面结构

@@ -2,6 +2,11 @@
 name = "lan-drop"
 version = "0.1.0"
 edition = "2021"
+default-run = "lan-drop"
+
+[features]
+default = []
+tray = ["tray-icon", "tao", "webbrowser", "image"]
 
 [dependencies]
 axum = { version = "0.8", features = ["ws"] }
@@ -16,8 +21,27 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dashmap = "6"
 clap = { version = "4", features = ["derive"] }
 futures = "0.3"
+if-addrs = "0.13"
+
+# System tray dependencies (only for --features tray)
+tray-icon = { version = "0.19", optional = true }
+tao = { version = "0.35", optional = true }
+webbrowser = { version = "1.0", optional = true }
+image = { version = "0.25", optional = true, default-features = false, features = ["ico"] }
 
 [dev-dependencies]
 tower = "0.5"
 tokio-tungstenite = "0.26"
 reqwest = { version = "0.12", features = ["json"] }
+
+[build-dependencies]
+winres = "0.1"
+
+[[bin]]
+name = "lan-drop"
+path = "src/main.rs"
+
+[[bin]]
+name = "lan-drop-tray"
+path = "src/bin/tray.rs"
+required-features = ["tray"]

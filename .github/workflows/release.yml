@@ -52,12 +52,18 @@ jobs:
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
+        if: matrix.target != 'x86_64-pc-windows-msvc'
+
+      - name: Build (Windows with tray)
+        run: cargo build --release --target ${{ matrix.target }} --features tray
+        if: matrix.target == 'x86_64-pc-windows-msvc'
 
       - name: Package (Windows)
         if: matrix.target == 'x86_64-pc-windows-msvc'
         run: |
           mkdir dist
           cp target/${{ matrix.target }}/release/lan-drop.exe dist/
+          cp target/${{ matrix.target }}/release/lan-drop-tray.exe dist/
           cp -r frontend dist/frontend
           cp README.md LICENSE dist/
           cd dist && 7z a ../${{ matrix.artifact }} .
