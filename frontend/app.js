@@ -43,7 +43,9 @@ const speedLimitSelect = document.getElementById("speed-limit");
 const previewDialog = document.getElementById("preview-dialog");
 const previewMediaContainer = document.getElementById("preview-media-container");
 const previewDownloadBtn = document.getElementById("preview-download");
-const previewCloseBtn = document.getElementById("preview-close");speedLimitSelect.onchange = () => {
+const previewCloseBtn = document.getElementById("preview-close");
+
+speedLimitSelect.onchange = () => {
   transfer._speedLimit = parseInt(speedLimitSelect.value);
 };
 
@@ -332,14 +334,18 @@ function renderPeers(peers) {
 
 async function sendFilesToPeer(peerId, files) {
   const fileArr = Array.from(files);
-  const totalSize = fileArr.reduce((sum, f) => sum + f.size, 0);
   const maxFileSize = signaling.config?.maxFileSize ?? Infinity;
-  if (totalSize > maxFileSize) {
-    alert(`所选文件总大小 ${formatSize(totalSize)} 超过 ${formatSize(maxFileSize)} 限制`);
-    return;
+
+  // The limit is per-file, not per-batch: skip oversized files individually
+  // but still send the rest.
+  const tooLarge = fileArr.filter((f) => f.size > maxFileSize);
+  if (tooLarge.length > 0) {
+    const names = tooLarge.map((f) => f.name).join("\n");
+    alert(`以下文件超过 ${formatSize(maxFileSize)} 单文件限制，已跳过：\n${names}`);
   }
 
   for (const file of fileArr) {
+    if (file.size > maxFileSize) continue;
     try {
       const transferId = await transfer.sendFile(peerId, file);
       addTransferCard(transferId, file.name, file.size, "sender");
@@ -501,7 +507,9 @@ textComposeSendBtn.onclick = async () => {
   const content = textComposeInput.value.trim();
   if (!content) return;
   const maxTextSize = signaling.config?.maxTextSize ?? Infinity;
-  if (content.length > maxTextSize) {
+  // Size-check in bytes to match the server's UTF-8 byte limit, not JS char count.
+  const contentBytes = new Blob([content]).size;
+  if (contentBytes > maxTextSize) {
     alert(`文本超过 ${formatSize(maxTextSize)} 限制`);
     return;
   }

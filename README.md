@@ -74,9 +74,9 @@ LanDrop v0.1.0 已启动！
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `-p, --port` | `3000` | 监听端口 |
-| `-s, --static-dir` | `./frontend` | 前端静态文件目录 |
 | `-l, --log-level` | `info` | 日志级别 (trace/debug/info/warn/error) |
 | `-m, --max-file-size-mb` | `512` | 单文件大小上限 (MB) |
+| `-t, --max-text-size-mb` | `1` | 文本消息大小上限 (MB) |
 
 ## 项目结构
 

@@ -60,6 +60,8 @@ struct ErrorMsg {
     msg_type: String,
     code: String,
     message: String,
+    #[serde(rename = "transferId", skip_serializing_if = "Option::is_none")]
+    transfer_id: Option<String>,
 }
 
 // --- WebSocket handler ---
@@ -86,6 +88,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             msg_type: "error".into(),
             code: "protocol_version_mismatch".into(),
             message: format!("Expected protocol version {}", PROTOCOL_VERSION),
+            transfer_id: None,
         };
         let _ = send_json(&mut sink, &err).await;
         return;
@@ -164,6 +167,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             msg_type: "error".into(),
                                             code: "text_too_long".into(),
                                             message: format!("Chat text length {} exceeds maximum {} bytes", content.len(), state.max_text_size),
+                                            transfer_id: None,
                                         };
                                         let _ = state.send_to(&node_id, &serde_json::to_string(&err).unwrap());
                                         continue;
@@ -281,6 +285,10 @@ async fn route_message(state: &Arc<AppState>, from_id: &NodeId, text: &str) {
                         "File size {} exceeds maximum {} bytes",
                         file_size, state.max_file_size
                     ),
+                    transfer_id: value
+                        .get("transferId")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                 };
                 let _ = state.send_to(from_id, &serde_json::to_string(&err).unwrap());
                 return;
@@ -300,6 +308,7 @@ async fn route_message(state: &Arc<AppState>, from_id: &NodeId, text: &str) {
                         content.len(),
                         state.max_text_size
                     ),
+                    transfer_id: None,
                 };
                 let _ = state.send_to(from_id, &serde_json::to_string(&err).unwrap());
                 return;
@@ -317,6 +326,7 @@ async fn route_message(state: &Arc<AppState>, from_id: &NodeId, text: &str) {
             msg_type: "error".into(),
             code: "target_not_found".into(),
             message: format!("Node {} not found", target),
+            transfer_id: None,
         };
         let _ = state.send_to(from_id, &serde_json::to_string(&err).unwrap());
     }
@@ -424,13 +434,15 @@ mod tests {
         let (sender_entry, mut sender_rx) = make_node("sender", "Fox");
         state.nodes.insert("sender".to_string(), sender_entry);
 
-        let msg = r#"{"type":"offer-file","to":"target","fileSize":200}"#;
+        let msg = r#"{"type":"offer-file","to":"target","transferId":"t-123","fileSize":200}"#;
         route_message(&state, &"sender".to_string(), msg).await;
 
         let err_msg = sender_rx.try_recv().unwrap();
         let v: Value = serde_json::from_str(&err_msg).unwrap();
         assert_eq!(v["type"], "error");
         assert_eq!(v["code"], "file_too_large");
+        // transferId must be echoed back so the client can locate the transfer card
+        assert_eq!(v["transferId"], "t-123");
     }
 
     #[tokio::test]

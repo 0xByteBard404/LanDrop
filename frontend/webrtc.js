@@ -255,11 +255,10 @@ export class FileTransfer {
         break;
 
       case "error":
-        if (msg.code === "file_too_large") {
-          if (this.onTransferError) {
-            const tid = msg.message?.match(/transfer/i) ? msg.transferId : null;
-            if (tid) this.onTransferError(tid, "file_too_large");
-          }
+        // Server rejects an offer that exceeds the size limit; locate the
+        // transfer card via the echoed transferId and surface the error.
+        if (msg.code === "file_too_large" && msg.transferId && this.onTransferError) {
+          this.onTransferError(msg.transferId, "file_too_large");
         }
         break;
     }
