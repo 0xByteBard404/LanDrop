@@ -42,7 +42,7 @@ describe("encodeChunk / decodeChunk", () => {
 
 describe("findMissingIndices", () => {
   it("返回未填充的索引", () => {
-    const chunks = [];
+    const chunks: (Uint8Array | undefined)[] = [];
     chunks[0] = new Uint8Array([1]);
     chunks[2] = new Uint8Array([3]);
     expect(findMissingIndices(chunks, 3)).toEqual([1]);

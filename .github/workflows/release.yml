@@ -31,6 +31,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node.js (build frontend for rust-embed)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Build frontend
+        run: npm ci && npm run build
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -62,19 +70,19 @@ jobs:
         if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: bash
         run: |
-          mkdir dist
-          cp target/${{ matrix.target }}/release/lan-drop.exe dist/
-          cp target/${{ matrix.target }}/release/lan-drop-tray.exe dist/
-          cp README.md LICENSE dist/
-          cd dist && 7z a ../${{ matrix.artifact }} .
+          mkdir pkg
+          cp target/${{ matrix.target }}/release/lan-drop.exe pkg/
+          cp target/${{ matrix.target }}/release/lan-drop-tray.exe pkg/
+          cp README.md LICENSE pkg/
+          cd pkg && 7z a ../${{ matrix.artifact }} .
 
       - name: Package (macOS/Linux)
         if: matrix.target != 'x86_64-pc-windows-msvc'
         run: |
-          mkdir dist
-          cp target/${{ matrix.target }}/release/lan-drop dist/
-          cp README.md LICENSE dist/
-          cd dist && tar czf ../${{ matrix.artifact }} .
+          mkdir pkg
+          cp target/${{ matrix.target }}/release/lan-drop pkg/
+          cp README.md LICENSE pkg/
+          cd pkg && tar czf ../${{ matrix.artifact }} .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -1,51 +1,57 @@
 import { log } from "./lib/log.js";
+import type { AppConfig, NodeInfo, ServerMessage } from "./types.js";
 
 const STORAGE_KEY = "landrop_identity";
 const WS_PATH = "/ws";
 const RECONNECT_BASE_DELAY = 1000;
 const RECONNECT_MAX_DELAY = 30000;
 const HEARTBEAT_INTERVAL = 30000; // 心跳发送间隔 (ms)
-const HEARTBEAT_TIMEOUT = 60000;  // 未收到 pong 的断连阈值 (ms)
+const HEARTBEAT_TIMEOUT = 60000; // 未收到 pong 的断连阈值 (ms)
 
-function loadIdentity() {
+type Identity = { nodeId: string; name: string } | null;
+
+function loadIdentity(): Identity {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return JSON.parse(raw) as Identity;
   } catch {}
   return null;
 }
 
-function saveIdentity(nodeId, name) {
+function saveIdentity(nodeId: string, name: string): void {
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ nodeId, name }));
   } catch {}
 }
 
-export class SignalingClient {
-  constructor() {
-    this.ws = null;
-    this.nodeId = null;
-    this.nodeInfo = null;
-    this.peers = new Map(); // id -> {id, name}
-    this.config = null; // set by app.js before connect()
-    this.onPeersUpdate = null;
-    this.onOfferFile = null;
-    this.onTextReceived = null;
-    this.onMessage = null;
-    this.onDisconnect = null;
-    this.onChatMessage = null;
-    this.reconnectTimer = null;
-    this.reconnectDelay = RECONNECT_BASE_DELAY;
-    this._heartbeatTimer = null;
-    this._lastPongAt = 0;
-  }
+type OfferFileMsg = Extract<ServerMessage, { type: "offer-file" }>;
+type SendTextMsg = Extract<ServerMessage, { type: "send-text" }>;
+type ChatMsg = Extract<ServerMessage, { type: "chat" }>;
 
-  connect(url = `ws://${location.host}${WS_PATH}`) {
+export class SignalingClient {
+  ws: WebSocket | null = null;
+  wsUrl = "";
+  nodeId: string | null = null;
+  nodeInfo: NodeInfo | null = null;
+  peers = new Map<string, NodeInfo>();
+  config: AppConfig | null = null; // set by app.ts before connect()
+  onPeersUpdate: ((peers: Map<string, NodeInfo>) => void) | null = null;
+  onOfferFile: ((msg: OfferFileMsg) => void) | null = null;
+  onTextReceived: ((msg: SendTextMsg) => void) | null = null;
+  onMessage: ((msg: ServerMessage) => void) | null = null;
+  onDisconnect: (() => void) | null = null;
+  onChatMessage: ((msg: ChatMsg) => void) | null = null;
+  reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  reconnectDelay = RECONNECT_BASE_DELAY;
+  private _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private _lastPongAt = 0;
+
+  connect(url = `ws://${location.host}${WS_PATH}`): void {
     this.wsUrl = url;
     this._doConnect();
   }
 
-  _doConnect() {
+  private _doConnect(): void {
     this.ws = new WebSocket(this.wsUrl);
 
     this.ws.onopen = () => {
@@ -53,7 +59,10 @@ export class SignalingClient {
       this._lastPongAt = Date.now();
       this._startHeartbeat();
       const identity = loadIdentity();
-      const joinMsg = { type: "join", protocolVersion: this.config?.protocolVersion ?? 1 };
+      const joinMsg: { type: "join"; protocolVersion: number; nodeId?: string; name?: string } = {
+        type: "join",
+        protocolVersion: this.config?.protocolVersion ?? 1,
+      };
       if (identity) {
         joinMsg.nodeId = identity.nodeId;
         joinMsg.name = identity.name;
@@ -62,9 +71,9 @@ export class SignalingClient {
     };
 
     this.ws.onmessage = (event) => {
-      let msg;
+      let msg: ServerMessage;
       try {
-        msg = JSON.parse(event.data);
+        msg = JSON.parse(event.data) as ServerMessage;
       } catch (e) {
         log.warn("收到畸形信令消息，已忽略:", e);
         return;
@@ -86,7 +95,7 @@ export class SignalingClient {
     this.ws.onerror = () => {};
   }
 
-  _scheduleReconnect() {
+  private _scheduleReconnect(): void {
     if (this.reconnectTimer) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -96,7 +105,7 @@ export class SignalingClient {
   }
 
   // 应用层心跳：浏览器 WS API 无法主动发 Ping 帧，改用 ping/pong 消息
-  _startHeartbeat() {
+  private _startHeartbeat(): void {
     this._stopHeartbeat();
     this._heartbeatTimer = setInterval(() => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
@@ -109,14 +118,14 @@ export class SignalingClient {
     }, HEARTBEAT_INTERVAL);
   }
 
-  _stopHeartbeat() {
+  private _stopHeartbeat(): void {
     if (this._heartbeatTimer) {
       clearInterval(this._heartbeatTimer);
       this._heartbeatTimer = null;
     }
   }
 
-  _handleMessage(msg) {
+  private _handleMessage(msg: ServerMessage): void {
     switch (msg.type) {
       case "joined":
         this.nodeId = msg.nodeId;
@@ -124,7 +133,7 @@ export class SignalingClient {
         // Update config from server
         if (msg.maxFileSize != null) {
           this.config = {
-            ...this.config,
+            iceServers: this.config?.iceServers ?? [],
             maxFileSize: msg.maxFileSize,
             maxTextSize: msg.maxTextSize,
             protocolVersion: msg.protocolVersion,
@@ -168,17 +177,17 @@ export class SignalingClient {
     }
   }
 
-  send(msg) {
+  send(msg: object): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
   }
 
-  _send(msg) {
-    this.ws.send(JSON.stringify(msg));
+  private _send(msg: object): void {
+    this.ws!.send(JSON.stringify(msg));
   }
 
-  sendOfferFile(to, transferId, file) {
+  sendOfferFile(to: string, transferId: string, file: File): void {
     this.send({
       type: "offer-file",
       to,
@@ -189,47 +198,47 @@ export class SignalingClient {
     });
   }
 
-  sendOfferSecureText(to, transferId, textPreview) {
+  sendOfferSecureText(to: string, transferId: string, textPreview: string): void {
     this.send({ type: "offer-secure-text", to, transferId, textPreview });
   }
 
-  sendAcceptFile(to, transferId) {
+  sendAcceptFile(to: string, transferId: string): void {
     this.send({ type: "accept-file", to, transferId });
   }
 
-  sendRejectFile(to, transferId, reason = "user_rejected") {
+  sendRejectFile(to: string, transferId: string, reason = "user_rejected"): void {
     this.send({ type: "reject-file", to, transferId, reason });
   }
 
-  sendCancelTransfer(to, transferId, reason = "user_cancelled") {
+  sendCancelTransfer(to: string, transferId: string, reason = "user_cancelled"): void {
     this.send({ type: "cancel-transfer", to, transferId, reason });
   }
 
-  sendTransferError(to, transferId, error) {
+  sendTransferError(to: string, transferId: string, error: string): void {
     this.send({ type: "transfer-error", to, transferId, error });
   }
 
-  sendSdpOffer(to, transferId, sdp) {
+  sendSdpOffer(to: string, transferId: string, sdp: string): void {
     this.send({ type: "sdp-offer", to, transferId, sdp });
   }
 
-  sendSdpAnswer(to, transferId, sdp) {
+  sendSdpAnswer(to: string, transferId: string, sdp: string): void {
     this.send({ type: "sdp-answer", to, transferId, sdp });
   }
 
-  sendIceCandidate(to, transferId, candidate) {
+  sendIceCandidate(to: string, transferId: string, candidate: RTCIceCandidateInit): void {
     this.send({ type: "ice-candidate", to, transferId, candidate });
   }
 
-  sendText(to, textId, content) {
+  sendText(to: string, textId: string, content: string): void {
     this.send({ type: "send-text", to, textId, content });
   }
 
-  sendRename(name) {
+  sendRename(name: string): void {
     this._send({ type: "rename", name });
   }
 
-  sendChat(content) {
+  sendChat(content: string): void {
     this._send({ type: "chat", content });
   }
 }

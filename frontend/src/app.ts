@@ -3,51 +3,64 @@ import { playChime } from "./lib/sound.js";
 import { addHistory, getHistory } from "./lib/db.js";
 import { SignalingClient } from "./signaling.js";
 import { FileTransfer } from "./webrtc.js";
+import type { AppConfig, NodeInfo, ServerMessage, TransferRecord, TransferRole, TransferState } from "./types.js";
 
 const signaling = new SignalingClient();
-const transfer = new FileTransfer(signaling);
-const transferMeta = new Map(); // transferId -> { fileName, fileSize, role }
+const transfer = new FileTransfer(signaling) as unknown as FileTransfer & {
+  activeTransfers: Map<string, TransferState>;
+  _speedLimit: number;
+  onProgress: ((transferId: string, current: number, total: number) => void) | null;
+  onTransferComplete: ((transferId: string) => void) | null;
+  onTransferError: ((transferId: string, error: string) => void) | null;
+  onSecureTextReceived: ((transferId: string, text: string, fromId: string) => void) | null;
+  onSecureTextOffer: ((fromId: string, transferId: string, textPreview: string) => void) | null;
+  onMediaPreview: ((transferId: string, fileName: string, mimeType: string, fileSize: number) => void) | null;
+};
+const transferMeta = new Map<string, { fileName: string; fileSize: number; role: TransferRole; peerName: string }>();
+
+type OfferFileMsg = Extract<ServerMessage, { type: "offer-file" }>;
+type OfferMsg = OfferFileMsg | Extract<ServerMessage, { type: "offer-secure-text" }>;
 
 // --- DOM refs ---
 
-const selfInfoEl = document.getElementById("self-info");
-const peersListEl = document.getElementById("peers-list");
-const noPeersEl = document.getElementById("no-peers");
-const chatMessagesEl = document.getElementById("chat-messages");
-const chatInput = document.getElementById("chat-input");
-const chatSendBtn = document.getElementById("chat-send");
-const transfersListEl = document.getElementById("transfers-list");
-const noTransfersEl = document.getElementById("no-transfers");
-const offerDialog = document.getElementById("offer-dialog");
-const offerTitle = document.getElementById("offer-title");
-const offerFileInfo = document.getElementById("offer-file-info");
-const offerAcceptBtn = document.getElementById("offer-accept");
-const offerRejectBtn = document.getElementById("offer-reject");
-const messagesListEl = document.getElementById("messages-list");
-const noMessagesEl = document.getElementById("no-messages");
-const textComposeDialog = document.getElementById("text-compose-dialog");
-const textComposeTitle = document.getElementById("text-compose-title");
-const textComposeInput = document.getElementById("text-compose-input");
-const textComposeSendBtn = document.getElementById("text-compose-send");
-const textComposeCancelBtn = document.getElementById("text-compose-cancel");
-const textComposeSecure = document.getElementById("text-compose-secure");
-const secureHint = document.getElementById("secure-hint");
-const textReceiveDialog = document.getElementById("text-receive-dialog");
-const textReceiveTitle = document.getElementById("text-receive-title");
-const textReceiveContent = document.getElementById("text-receive-content");
-const textReceiveCopyBtn = document.getElementById("text-receive-copy");
-const textReceiveCloseBtn = document.getElementById("text-receive-close");
-const qrBtn = document.getElementById("qr-btn");
-const qrDialog = document.getElementById("qr-dialog");
-const qrContainer = document.getElementById("qr-container");
-const qrUrlEl = document.getElementById("qr-url");
-const qrCopyBtn = document.getElementById("qr-copy");
-const qrCloseBtn = document.getElementById("qr-close");
-const speedLimitSelect = document.getElementById("speed-limit");
-const previewDialog = document.getElementById("preview-dialog");
-const previewMediaContainer = document.getElementById("preview-media-container");
-const previewDownloadBtn = document.getElementById("preview-download");
-const previewCloseBtn = document.getElementById("preview-close");
+const selfInfoEl = document.getElementById("self-info") as HTMLElement;
+const peersListEl = document.getElementById("peers-list") as HTMLElement;
+const noPeersEl = document.getElementById("no-peers") as HTMLElement;
+const chatMessagesEl = document.getElementById("chat-messages") as HTMLElement;
+const chatInput = document.getElementById("chat-input") as HTMLInputElement;
+const chatSendBtn = document.getElementById("chat-send") as HTMLElement;
+const transfersListEl = document.getElementById("transfers-list") as HTMLElement;
+const noTransfersEl = document.getElementById("no-transfers") as HTMLElement;
+const offerDialog = document.getElementById("offer-dialog") as HTMLDialogElement;
+const offerTitle = document.getElementById("offer-title") as HTMLElement;
+const offerFileInfo = document.getElementById("offer-file-info") as HTMLElement;
+const offerAcceptBtn = document.getElementById("offer-accept") as HTMLElement;
+const offerRejectBtn = document.getElementById("offer-reject") as HTMLElement;
+const messagesListEl = document.getElementById("messages-list") as HTMLElement;
+const noMessagesEl = document.getElementById("no-messages") as HTMLElement;
+const textComposeDialog = document.getElementById("text-compose-dialog") as HTMLDialogElement;
+const textComposeTitle = document.getElementById("text-compose-title") as HTMLElement;
+const textComposeInput = document.getElementById("text-compose-input") as HTMLTextAreaElement;
+const textComposeSendBtn = document.getElementById("text-compose-send") as HTMLElement;
+const textComposeCancelBtn = document.getElementById("text-compose-cancel") as HTMLElement;
+const textComposeSecure = document.getElementById("text-compose-secure") as HTMLInputElement;
+const secureHint = document.getElementById("secure-hint") as HTMLElement;
+const textReceiveDialog = document.getElementById("text-receive-dialog") as HTMLDialogElement;
+const textReceiveTitle = document.getElementById("text-receive-title") as HTMLElement;
+const textReceiveContent = document.getElementById("text-receive-content") as HTMLElement;
+const textReceiveCopyBtn = document.getElementById("text-receive-copy") as HTMLElement;
+const textReceiveCloseBtn = document.getElementById("text-receive-close") as HTMLElement;
+const qrBtn = document.getElementById("qr-btn") as HTMLElement;
+const qrDialog = document.getElementById("qr-dialog") as HTMLDialogElement;
+const qrContainer = document.getElementById("qr-container") as HTMLElement;
+const qrUrlEl = document.getElementById("qr-url") as HTMLElement;
+const qrCopyBtn = document.getElementById("qr-copy") as HTMLElement;
+const qrCloseBtn = document.getElementById("qr-close") as HTMLElement;
+const speedLimitSelect = document.getElementById("speed-limit") as HTMLSelectElement;
+const previewDialog = document.getElementById("preview-dialog") as HTMLDialogElement;
+const previewMediaContainer = document.getElementById("preview-media-container") as HTMLElement;
+const previewDownloadBtn = document.getElementById("preview-download") as HTMLElement;
+const previewCloseBtn = document.getElementById("preview-close") as HTMLElement;
 
 speedLimitSelect.onchange = () => {
   transfer._speedLimit = parseInt(speedLimitSelect.value);
@@ -55,13 +68,13 @@ speedLimitSelect.onchange = () => {
 
 // --- Media preview ---
 
-transfer.onMediaPreview = (transferId, fileName, mimeType, _fileSize) => {
+transfer.onMediaPreview = (transferId: string, fileName: string, mimeType: string, _fileSize: number) => {
   const t = transfer.activeTransfers.get(transferId);
   if (!t || !t._blobUrl) return;
   showMediaPreview(t._blobUrl, fileName, mimeType);
 };
 
-function showMediaPreview(blobUrl, fileName, mimeType) {
+function showMediaPreview(blobUrl: string, fileName: string, mimeType: string) {
   previewMediaContainer.innerHTML = "";
   if (mimeType.startsWith("image/")) {
     const img = document.createElement("img");
@@ -97,7 +110,7 @@ function requestNotificationPermission() {
   }
 }
 
-function showNotification(title, body) {
+function showNotification(title: string, body: string) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   if (document.visibilityState === "visible") return;
   try {
@@ -110,7 +123,7 @@ requestNotificationPermission();
 
 // --- Signaling events ---
 
-signaling.onPeersUpdate = (peers) => {
+signaling.onPeersUpdate = (peers: Map<string, NodeInfo>) => {
   renderPeers(peers);
   updateSelfInfo();
 };
@@ -141,7 +154,7 @@ selfInfoEl.addEventListener("click", () => {
   const finish = () => {
     const newName = input.value.trim();
     if (newName && newName !== currentName && newName.length <= (signaling.config?.maxNameLength || 32)) {
-      signaling.nodeInfo.name = newName;
+      signaling.nodeInfo!.name = newName;
       signaling.sendRename(newName);
       // Update session storage
       try {
@@ -166,13 +179,13 @@ signaling.onDisconnect = () => {
   transfer.cancelAll("signaling_reconnect");
 };
 
-signaling.onOfferFile = (msg) => {
+signaling.onOfferFile = (msg: OfferFileMsg) => {
   showOfferDialog(msg);
   const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
   showNotification("收到文件", `${peerName}: ${msg.fileName} (${formatSize(msg.fileSize)})`);
 };
 
-signaling.onMessage = (msg) => {
+signaling.onMessage = (msg: ServerMessage) => {
   if (msg.type === "error" && msg.code === "text_too_long") {
     toast(`文本超过 ${formatSize(signaling.config?.maxTextSize ?? 0)} 限制`, "error");
     return;
@@ -180,7 +193,7 @@ signaling.onMessage = (msg) => {
   transfer.handleSignalingMessage(msg);
 };
 
-signaling.onTextReceived = (msg) => {
+signaling.onTextReceived = (msg: Extract<ServerMessage, { type: "send-text" }>) => {
   showReceivedText(msg);
   const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
   showNotification("收到文本", `来自 ${peerName}`);
@@ -188,11 +201,11 @@ signaling.onTextReceived = (msg) => {
 
 // --- Transfer events ---
 
-transfer.onProgress = (transferId, current, total) => {
+transfer.onProgress = (transferId: string, current: number, total: number) => {
   updateTransferProgress(transferId, current, total);
 };
 
-transfer.onTransferComplete = (transferId) => {
+transfer.onTransferComplete = (transferId: string) => {
   updateTransferStatus(transferId, "传输完成", "success");
   showNotification("传输完成", "文件已成功传输");
   playChime();
@@ -203,8 +216,8 @@ transfer.onTransferComplete = (transferId) => {
   }
 };
 
-transfer.onTransferError = (transferId, error) => {
-  const messages = {
+transfer.onTransferError = (transferId: string, error: string) => {
+  const messages: Record<string, string> = {
     user_rejected: "对方拒绝了文件",
     user_cancelled: "传输已取消",
     ice_timeout: "连接超时",
@@ -226,7 +239,7 @@ transfer.onTransferError = (transferId, error) => {
   }
 };
 
-transfer.onSecureTextReceived = (transferId, text, fromId) => {
+transfer.onSecureTextReceived = (transferId: string, text: string, fromId: string) => {
   const peerName = signaling.peers.get(fromId)?.name || "未知设备";
   addMessageCard(transferId, text, "receiver", peerName, true);
   textReceiveTitle.textContent = `来自 ${peerName} 的文本 (安全)`;
@@ -235,22 +248,22 @@ transfer.onSecureTextReceived = (transferId, text, fromId) => {
   showNotification("收到安全文本", `来自 ${peerName}`);
 };
 
-transfer.onSecureTextOffer = (fromId, transferId, textPreview) => {
+transfer.onSecureTextOffer = (fromId: string, transferId: string, textPreview: string) => {
   showOfferDialog({ type: "offer-secure-text", from: fromId, transferId, textPreview });
 };
 
 // --- Chat ---
 
-signaling.onChatMessage = (msg) => {
+signaling.onChatMessage = (msg: Extract<ServerMessage, { type: "chat" }>) => {
   const isSelf = msg.from === signaling.nodeId;
   const name = isSelf ? signaling.nodeInfo?.name : (msg.name || signaling.peers.get(msg.from)?.name || "未知设备");
-  addChatMessage(name, msg.content, isSelf);
+  addChatMessage(name as string, msg.content, isSelf);
   if (!isSelf) {
     showNotification("群聊消息", `${name}: ${msg.content.slice(0, 60)}`);
   }
 };
 
-function addChatMessage(name, content, isSelf) {
+function addChatMessage(name: string, content: string, isSelf: boolean) {
   const el = document.createElement("div");
   el.className = `chat-msg ${isSelf ? "self" : "other"}`;
   const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
@@ -282,7 +295,7 @@ chatInput.onkeydown = (e) => {
 
 // --- Render peers ---
 
-function renderPeers(peers) {
+function renderPeers(peers: Map<string, NodeInfo>) {
   if (peers.size === 0) {
     peersListEl.innerHTML = "";
     noPeersEl.style.display = "block";
@@ -327,7 +340,7 @@ function renderPeers(peers) {
     // Drag-and-drop
     card.addEventListener("dragover", (e) => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
+      e.dataTransfer!.dropEffect = "copy";
       card.classList.add("drag-over");
     });
     card.addEventListener("dragenter", (e) => {
@@ -340,7 +353,7 @@ function renderPeers(peers) {
     card.addEventListener("drop", (e) => {
       e.preventDefault();
       card.classList.remove("drag-over");
-      const files = e.dataTransfer.files;
+      const files = e.dataTransfer!.files;
       if (files && files.length > 0) {
         sendFilesToPeer(id, files);
       }
@@ -352,7 +365,7 @@ function renderPeers(peers) {
 
 // --- File selection ---
 
-async function sendFilesToPeer(peerId, files) {
+async function sendFilesToPeer(peerId: string, files: FileList | File[]) {
   const fileArr = Array.from(files);
   const maxFileSize = signaling.config?.maxFileSize ?? Infinity;
 
@@ -370,12 +383,12 @@ async function sendFilesToPeer(peerId, files) {
       const transferId = await transfer.sendFile(peerId, file);
       addTransferCard(transferId, file.name, file.size, "sender", signaling.peers.get(peerId)?.name || "未知设备");
     } catch (e) {
-      toast(`${file.name}: ${e.message}`, "error");
+      toast(`${file.name}: ${(e as Error).message}`, "error");
     }
   }
 }
 
-async function selectAndSend(peerId, directory = false) {
+async function selectAndSend(peerId: string, directory = false) {
   const input = document.createElement("input");
   input.type = "file";
   input.multiple = true;
@@ -393,11 +406,11 @@ async function selectAndSend(peerId, directory = false) {
 
 // --- Offer dialog ---
 
-const offerQueue = [];
+const offerQueue: OfferMsg[] = [];
 let showingOffer = false;
-let currentOfferTransferId = null;
+let currentOfferTransferId: string | null = null;
 
-function showOfferDialog(msg) {
+function showOfferDialog(msg: OfferMsg) {
   offerQueue.push(msg);
   if (!showingOffer) _showNextOffer();
 }
@@ -410,21 +423,20 @@ function _showNextOffer() {
     return;
   }
   showingOffer = true;
-  const msg = offerQueue.shift();
+  const msg = offerQueue.shift()!;
   currentOfferTransferId = msg.transferId;
   const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
-  const isSecureText = msg.type === "offer-secure-text";
-  offerTitle.textContent = isSecureText
+  offerTitle.textContent = msg.type === "offer-secure-text"
     ? `${peerName} 想发送安全文本`
     : `${peerName} 想发送文件`;
-  offerFileInfo.textContent = isSecureText
+  offerFileInfo.textContent = msg.type === "offer-secure-text"
     ? msg.textPreview || "(无预览)"
     : `${msg.fileName} (${formatSize(msg.fileSize)})`;
   offerDialog.showModal();
 
   offerAcceptBtn.onclick = () => {
     signaling.sendAcceptFile(msg.from, msg.transferId);
-    if (isSecureText) {
+    if (msg.type === "offer-secure-text") {
       transfer.acceptSecureText(msg.from, msg.transferId);
     } else {
       addTransferCard(msg.transferId, msg.fileName, msg.fileSize, "receiver", peerName);
@@ -438,7 +450,7 @@ function _showNextOffer() {
   };
 }
 
-function dismissOffer(transferId) {
+function dismissOffer(transferId: string) {
   // Remove from queue
   const idx = offerQueue.findIndex(m => m.transferId === transferId);
   if (idx !== -1) offerQueue.splice(idx, 1);
@@ -450,7 +462,7 @@ function dismissOffer(transferId) {
 
 // --- Transfer cards ---
 
-function addTransferCard(transferId, fileName, fileSize, role, peerName = "未知设备") {
+function addTransferCard(transferId: string, fileName: string, fileSize: number, role: TransferRole, peerName = "未知设备") {
   transferMeta.set(transferId, { fileName, fileSize, role, peerName });
   noTransfersEl.style.display = "none";
 
@@ -472,7 +484,7 @@ function addTransferCard(transferId, fileName, fileSize, role, peerName = "未�
     </div>
   `;
 
-  card.querySelector(".transfer-cancel").onclick = () => {
+  (card.querySelector(".transfer-cancel") as HTMLElement).onclick = () => {
     transfer.cancelTransfer(transferId);
   };
 
@@ -482,7 +494,7 @@ function addTransferCard(transferId, fileName, fileSize, role, peerName = "未�
 async function renderHistoryList() {
   const el = document.getElementById("history-list");
   if (!el) return;
-  const history = await getHistory();
+  const history: TransferRecord[] = await getHistory();
   if (history.length === 0) {
     el.innerHTML = "";
     return;
@@ -508,12 +520,12 @@ async function renderHistoryList() {
     .join("");
 }
 
-function updateTransferProgress(transferId, current, total) {
+function updateTransferProgress(transferId: string, current: number, total: number) {
   const card = document.getElementById(`transfer-${transferId}`);
   if (!card) return;
 
   const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-  const fill = card.querySelector(".transfer-progress-fill");
+  const fill = card.querySelector(".transfer-progress-fill") as HTMLElement | null;
   if (fill) fill.style.width = `${percent}%`;
 
   const status = card.querySelector(".transfer-status");
@@ -522,7 +534,7 @@ function updateTransferProgress(transferId, current, total) {
   }
 }
 
-function updateTransferStatus(transferId, text, className) {
+function updateTransferStatus(transferId: string, text: string, className: string) {
   const card = document.getElementById(`transfer-${transferId}`);
   if (!card) return;
 
@@ -532,7 +544,7 @@ function updateTransferStatus(transferId, text, className) {
     status.className = `transfer-status ${className}`;
   }
 
-  const fill = card.querySelector(".transfer-progress-fill");
+  const fill = card.querySelector(".transfer-progress-fill") as HTMLElement | null;
   if (fill) fill.style.width = className === "success" ? "100%" : fill.style.width;
 
   const cancelBtn = card.querySelector(".transfer-cancel");
@@ -541,9 +553,9 @@ function updateTransferStatus(transferId, text, className) {
 
 // --- Text messaging ---
 
-let textComposeTargetId = null;
+let textComposeTargetId: string | null = null;
 
-function openTextCompose(peerId, peerName) {
+function openTextCompose(peerId: string, peerName: string) {
   textComposeTargetId = peerId;
   textComposeTitle.textContent = `发送文本给 ${peerName}`;
   textComposeInput.value = "";
@@ -578,19 +590,19 @@ textComposeSendBtn.onclick = async () => {
   }
 
   const textId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-  const peerName = signaling.peers.get(textComposeTargetId)?.name || "未知设备";
+  const peerName = signaling.peers.get(textComposeTargetId!)?.name || "未知设备";
   const secure = textComposeSecure.checked && !textComposeSecure.disabled;
 
   if (secure) {
     try {
-      await transfer.sendSecureText(textComposeTargetId, content);
+      await transfer.sendSecureText(textComposeTargetId!, content);
       addMessageCard(textId, content, "sender", peerName, true);
     } catch (e) {
-      toast("安全传输失败: " + e.message, "error");
+      toast("安全传输失败: " + (e as Error).message, "error");
       return;
     }
   } else {
-    signaling.sendText(textComposeTargetId, textId, content);
+    signaling.sendText(textComposeTargetId!, textId, content);
     addMessageCard(textId, content, "sender", peerName, false);
   }
 
@@ -598,7 +610,7 @@ textComposeSendBtn.onclick = async () => {
   textComposeTargetId = null;
 };
 
-async function showReceivedText(msg) {
+async function showReceivedText(msg: Extract<ServerMessage, { type: "send-text" }>) {
   const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
   addMessageCard(msg.textId, msg.content, "receiver", peerName, false);
 
@@ -610,13 +622,13 @@ async function showReceivedText(msg) {
 textReceiveCopyBtn.onclick = async () => {
   const text = textReceiveContent.textContent;
   try {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(text ?? "");
     textReceiveCopyBtn.textContent = "已复制";
     setTimeout(() => { textReceiveCopyBtn.textContent = "复制"; }, 1500);
   } catch {
     // Fallback
     const ta = document.createElement("textarea");
-    ta.value = text;
+    ta.value = text ?? "";
     document.body.appendChild(ta);
     ta.select();
     document.execCommand("copy");
@@ -630,7 +642,7 @@ textReceiveCloseBtn.onclick = () => {
   textReceiveDialog.close();
 };
 
-function addMessageCard(textId, content, role, peerName, encrypted = false) {
+function addMessageCard(textId: string, content: string, role: string, peerName: string, encrypted = false) {
   noMessagesEl.style.display = "none";
 
   const card = document.createElement("div");
@@ -638,9 +650,9 @@ function addMessageCard(textId, content, role, peerName, encrypted = false) {
   card.id = `message-${textId}`;
 
   const preview = content.length > 100 ? content.slice(0, 100) + "..." : content;
-  const arrow = role === "sender" ? "\u2191" : "\u2193";
+  const arrow = role === "sender" ? "↑" : "↓";
   const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-  const lock = encrypted ? ' <span class="lock-icon">\uD83D\uDD12</span>' : "";
+  const lock = encrypted ? ' <span class="lock-icon">🔒</span>' : "";
 
   card.innerHTML = `
     <div class="message-header">
@@ -660,7 +672,7 @@ function addMessageCard(textId, content, role, peerName, encrypted = false) {
   messagesListEl.prepend(card);
 }
 
-function escapeHtml(str) {
+function escapeHtml(str: string) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
@@ -668,7 +680,7 @@ function escapeHtml(str) {
 
 // --- Utility ---
 
-function formatSize(bytes) {
+function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -677,7 +689,7 @@ function formatSize(bytes) {
 
 // --- QR code dialog ---
 
-let cachedLanUrl = null;
+let cachedLanUrl: string | null = null;
 
 qrBtn.onclick = async () => {
   qrContainer.innerHTML = "";
@@ -689,7 +701,7 @@ qrBtn.onclick = async () => {
     }
     qrUrlEl.textContent = cachedLanUrl;
     new QRCode(qrContainer, {
-      text: cachedLanUrl,
+      text: cachedLanUrl!,
       width: 200,
       height: 200,
       colorDark: "#e8e4df",
@@ -736,7 +748,7 @@ async function init() {
       protocolVersion: data.protocolVersion,
       maxNameLength: data.maxNameLength,
       iceServers: data.iceServers ? JSON.parse(data.iceServers) : [],
-    };
+    } as AppConfig;
   } catch {
     // Fallback defaults
     signaling.config = {
@@ -745,7 +757,7 @@ async function init() {
       protocolVersion: 1,
       maxNameLength: 32,
       iceServers: [],
-    };
+    } as AppConfig;
   }
   signaling.connect();
   renderHistoryList();

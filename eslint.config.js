@@ -1,11 +1,13 @@
 import js from "@eslint/js";
+import tseslint from "typescript-eslint";
 import globals from "globals";
 
-export default [
+export default tseslint.config(
   {
-    ignores: ["frontend/lib/qrcode.min.js", "node_modules/", "dist/"],
+    ignores: ["frontend/public/lib/qrcode.min.js", "node_modules/", "frontend/dist/"],
   },
   js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
     languageOptions: {
       ecmaVersion: 2022,
@@ -16,13 +18,13 @@ export default [
       },
     },
     rules: {
-      // 未使用变量告警（_ 前缀的参数/变量豁免）
-      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
-      // 已用 log 工具封装，log.js 内部仍需 console，故不禁止
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "no-console": "off",
-      // 允许空 catch（用于忽略预期错误）
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-useless-escape": "off",
     },
   },
-];
+);

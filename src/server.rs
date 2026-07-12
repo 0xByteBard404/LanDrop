@@ -10,7 +10,7 @@ use tower_http::cors::CorsLayer;
 
 /// Embedded frontend assets — compiled into the binary at build time.
 #[derive(Embed)]
-#[folder = "frontend/"]
+#[folder = "frontend/dist/"]
 struct FrontendAssets;
 
 /// Content-Security-Policy：限制前端资源加载来源，防 XSS 注入。
