@@ -1,7 +1,7 @@
 import { log } from "./lib/log.js";
 import { encodeChunk, decodeChunk, findMissingIndices } from "./lib/protocol.js";
 
-const CHUNK_SIZE = 16384; // 16KB
+const CHUNK_SIZE = 65536; // 64KB（SCTP 消息上限内，减少分块数）
 
 // --- Constants ---
 const ICE_SERVERS = [];                       // STUN/TURN servers (LAN-only by default)
@@ -452,7 +452,6 @@ export class FileTransfer {
       // Compute SHA-256
       const fileBuffer = await file.arrayBuffer();
       const fileHash = await sha256Hex(fileBuffer);
-      transfer._fileBuffer = fileBuffer; // cache for potential retransmission
 
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       log.debug(`[发送] ${transferId.slice(0,8)} 开始发送, 总块数=${totalChunks}, hash=${fileHash.slice(0,16)}`);
@@ -837,9 +836,8 @@ export class FileTransfer {
 
   async _retransmitChunks(transferId, indices) {
     const transfer = this.activeTransfers.get(transferId);
-    if (!transfer || !transfer._fileBuffer || !transfer.dataChannel) return;
+    if (!transfer || !transfer.file || !transfer.dataChannel) return;
 
-    const fileBuffer = transfer._fileBuffer;
     const fileSize = transfer.file.size;
 
     for (const i of indices) {
@@ -847,7 +845,7 @@ export class FileTransfer {
 
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, fileSize);
-      const chunkData = fileBuffer.slice(start, end);
+      const chunkData = await transfer.file.slice(start, end).arrayBuffer();
 
       const payload = encodeChunk(i, chunkData);
 

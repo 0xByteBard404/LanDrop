@@ -13,6 +13,13 @@ use tower_http::cors::CorsLayer;
 #[folder = "frontend/"]
 struct FrontendAssets;
 
+/// Content-Security-Policy：限制前端资源加载来源，防 XSS 注入。
+/// - script-src 'self'：仅同源脚本（qrcode.min.js 已确认不用 eval/Function）
+/// - style-src 'unsafe-inline'：进度条等动态 style 属性
+/// - blob:/data:：图片/视频预览与 favicon
+/// - ws:/wss:：WebSocket 信令连接
+const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:; font-src 'self'";
+
 /// Start the axum server with graceful shutdown support.
 ///
 /// Returns `(lan_url, shutdown_sender, server_task_handle)`.
@@ -85,6 +92,7 @@ pub fn build_app(state: Arc<AppState>, lan_url: &str) -> axum::Router {
             }),
         )
         .fallback(serve_embedded_file)
+        // 同源访问本不需要 CORS；保留 permissive 仅为兼容局域网内不同 IP/工具直接调用 /api/info
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -107,7 +115,10 @@ async fn serve_embedded_file(req: axum::extract::Request) -> impl axum::response
                 .to_string();
             (
                 StatusCode::OK,
-                [(header::CONTENT_TYPE, mime_type)],
+                [
+                    (header::CONTENT_TYPE, mime_type),
+                    (header::CONTENT_SECURITY_POLICY, CSP.to_string()),
+                ],
                 file.data.to_vec(),
             )
         }
@@ -116,12 +127,18 @@ async fn serve_embedded_file(req: axum::extract::Request) -> impl axum::response
             match FrontendAssets::get("index.html") {
                 Some(file) => (
                     StatusCode::OK,
-                    [(header::CONTENT_TYPE, "text/html; charset=utf-8".to_string())],
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8".to_string()),
+                        (header::CONTENT_SECURITY_POLICY, CSP.to_string()),
+                    ],
                     file.data.to_vec(),
                 ),
                 None => (
                     StatusCode::NOT_FOUND,
-                    [(header::CONTENT_TYPE, "text/plain".to_string())],
+                    [
+                        (header::CONTENT_TYPE, "text/plain".to_string()),
+                        (header::CONTENT_SECURITY_POLICY, CSP.to_string()),
+                    ],
                     "404 Not Found".as_bytes().to_vec(),
                 ),
             }
