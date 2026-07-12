@@ -352,7 +352,8 @@ export class FileTransfer {
     // Handle control messages from receiver
     controlChannel.onopen = () => {
       controlChannel.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
+        let msg;
+        try { msg = JSON.parse(e.data); } catch (err) { console.warn("控制通道畸形消息:", err); return; }
         this._handleControlMessage(transferId, msg);
       };
     };
@@ -605,7 +606,8 @@ export class FileTransfer {
       if (channel.label === "control") {
         transfer.controlChannel = channel;
         channel.onmessage = (e) => {
-          const msg = JSON.parse(e.data);
+          let msg;
+          try { msg = JSON.parse(e.data); } catch (err) { console.warn("控制通道畸形消息:", err); return; }
           this._handleControlMessage(transferId, msg);
         };
         channel.onerror = () => {

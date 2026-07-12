@@ -2,6 +2,8 @@ const STORAGE_KEY = "landrop_identity";
 const WS_PATH = "/ws";
 const RECONNECT_BASE_DELAY = 1000;
 const RECONNECT_MAX_DELAY = 30000;
+const HEARTBEAT_INTERVAL = 30000; // 心跳发送间隔 (ms)
+const HEARTBEAT_TIMEOUT = 60000;  // 未收到 pong 的断连阈值 (ms)
 
 function loadIdentity() {
   try {
@@ -32,6 +34,8 @@ export class SignalingClient {
     this.onChatMessage = null;
     this.reconnectTimer = null;
     this.reconnectDelay = RECONNECT_BASE_DELAY;
+    this._heartbeatTimer = null;
+    this._lastPongAt = 0;
   }
 
   connect(url = `ws://${location.host}${WS_PATH}`) {
@@ -44,6 +48,8 @@ export class SignalingClient {
 
     this.ws.onopen = () => {
       this.reconnectDelay = RECONNECT_BASE_DELAY;
+      this._lastPongAt = Date.now();
+      this._startHeartbeat();
       const identity = loadIdentity();
       const joinMsg = { type: "join", protocolVersion: this.config?.protocolVersion ?? 1 };
       if (identity) {
@@ -54,11 +60,23 @@ export class SignalingClient {
     };
 
     this.ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
+      let msg;
+      try {
+        msg = JSON.parse(event.data);
+      } catch (e) {
+        console.warn("收到畸形信令消息，已忽略:", e);
+        return;
+      }
+      // 心跳响应：更新心跳时间戳，不进入业务处理
+      if (msg.type === "pong") {
+        this._lastPongAt = Date.now();
+        return;
+      }
       this._handleMessage(msg);
     };
 
     this.ws.onclose = () => {
+      this._stopHeartbeat();
       this._scheduleReconnect();
       if (this.onDisconnect) this.onDisconnect();
     };
@@ -73,6 +91,27 @@ export class SignalingClient {
       this._doConnect();
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_DELAY);
     }, this.reconnectDelay);
+  }
+
+  // 应用层心跳：浏览器 WS API 无法主动发 Ping 帧，改用 ping/pong 消息
+  _startHeartbeat() {
+    this._stopHeartbeat();
+    this._heartbeatTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      this._send({ type: "ping" });
+      // 长时间未收到 pong，视为连接已死，主动断连以触发重连
+      if (Date.now() - this._lastPongAt > HEARTBEAT_TIMEOUT) {
+        console.warn("信令心跳超时，主动断连以触发重连");
+        this.ws.close();
+      }
+    }, HEARTBEAT_INTERVAL);
+  }
+
+  _stopHeartbeat() {
+    if (this._heartbeatTimer) {
+      clearInterval(this._heartbeatTimer);
+      this._heartbeatTimer = null;
+    }
   }
 
   _handleMessage(msg) {

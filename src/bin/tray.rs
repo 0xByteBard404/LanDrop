@@ -21,11 +21,19 @@ fn main() {
         .and_then(|p| p.parent().map(|d| d.join("landrop.log")))
         .unwrap_or_else(|| std::path::PathBuf::from("landrop.log"));
 
-    let log_file = std::fs::File::create(&log_path).ok();
+    // 兜底优先级：exe 同级目录 → 系统临时目录 → stderr（避免完全静默）
+    let log_file = std::fs::File::create(&log_path)
+        .or_else(|_| std::fs::File::create(std::env::temp_dir().join("landrop.log")))
+        .ok();
     if let Some(file) = log_file {
         tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::new(config.log_level.as_ref()))
             .with_writer(std::sync::Mutex::new(file))
+            .init();
+    } else {
+        // 最终兜底：stderr（Windows GUI 子系统下可能无效，但避免完全无日志）
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::new(config.log_level.as_ref()))
             .init();
     }
 

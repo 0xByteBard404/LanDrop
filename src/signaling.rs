@@ -183,6 +183,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 tracing::info!(node_id = %node_id, "广播聊天消息");
                                 continue;
                             }
+                            // Handle ping: respond with pong (keepalive heartbeat)
+                            if val.get("type").and_then(|v| v.as_str()) == Some("ping") {
+                                let _ = state.send_to(&node_id, r#"{"type":"pong"}"#);
+                                continue;
+                            }
                         }
                         route_message(&state, &node_id, &text).await;
                     }

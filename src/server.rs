@@ -45,12 +45,14 @@ pub async fn run_server(config: Config) -> (String, tokio::sync::oneshot::Sender
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
     let handle = tokio::spawn(async move {
-        axum::serve(listener, app)
+        if let Err(e) = axum::serve(listener, app)
             .with_graceful_shutdown(async {
                 let _ = shutdown_rx.await;
             })
             .await
-            .unwrap();
+        {
+            tracing::error!("服务器异常退出: {e}");
+        }
     });
 
     (lan_url, shutdown_tx, handle)
@@ -125,11 +127,22 @@ async fn serve_embedded_file(req: axum::extract::Request) -> impl axum::response
     }
 }
 
-/// Get the first non-loopback IPv4 address of this machine.
+/// Get the first non-loopback IPv4 address, skipping common virtual interfaces
+/// (docker/veth/virbr/bridge/tun/tap/...) so the printed LAN URL is reachable.
 pub fn get_local_ip() -> Option<String> {
     let interfaces = if_addrs::get_if_addrs().ok()?;
+    const VIRTUAL_PREFIXES: &[&str] = &[
+        "docker", "veth", "virbr", "br-", "tun", "tap", "utun", "flannel", "cni",
+    ];
     interfaces
         .iter()
-        .find(|iface| !iface.is_loopback() && iface.addr.ip().is_ipv4())
+        .filter(|iface| {
+            !iface.is_loopback()
+                && iface.addr.ip().is_ipv4()
+                && !VIRTUAL_PREFIXES
+                    .iter()
+                    .any(|p| iface.name.starts_with(p))
+        })
         .map(|iface| iface.addr.ip().to_string())
+        .next()
 }
