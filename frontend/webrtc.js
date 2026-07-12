@@ -198,16 +198,7 @@ export class FileTransfer {
         break;
 
       case "offer-secure-text":
-        // Auto-accept secure text transfer
-        this.signaling.sendAcceptFile(msg.from, msg.transferId);
-        this.activeTransfers.set(msg.transferId, {
-          role: "secure-receiver",
-          peerId: msg.from,
-          transferId: msg.transferId,
-          state: "waiting",
-          pendingIceCandidates: [],
-          remoteDescriptionSet: false,
-        });
+        // 由用户确认后再 accept（防骚扰）
         if (this.onSecureTextOffer) {
           this.onSecureTextOffer(msg.from, msg.transferId, msg.textPreview);
         }
@@ -449,8 +440,9 @@ export class FileTransfer {
 
     try {
       // Compute SHA-256
-      const fileBuffer = await file.arrayBuffer();
+      let fileBuffer = await file.arrayBuffer();
       const fileHash = await sha256Hex(fileBuffer);
+      fileBuffer = null; // 释放全量缓存，发送改用 file.slice 流式读取
 
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       log.debug(`[发送] ${transferId.slice(0,8)} 开始发送, 总块数=${totalChunks}, hash=${fileHash.slice(0,16)}`);
@@ -480,7 +472,7 @@ export class FileTransfer {
 
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
-        const chunkData = fileBuffer.slice(start, end);
+        const chunkData = await file.slice(start, end).arrayBuffer();
 
         // Prefix with 4-byte chunk index (big-endian)
         const payload = encodeChunk(i, chunkData);
@@ -877,6 +869,18 @@ export class FileTransfer {
         this._drainSendQueue();
       }
     }
+  }
+
+  // 接收方确认安全文本后调用：建立 secure-receiver 传输状态
+  acceptSecureText(fromId, transferId) {
+    this.activeTransfers.set(transferId, {
+      role: "secure-receiver",
+      peerId: fromId,
+      transferId,
+      state: "waiting",
+      pendingIceCandidates: [],
+      remoteDescriptionSet: false,
+    });
   }
 
   cancelTransfer(transferId) {

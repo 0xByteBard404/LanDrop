@@ -1,4 +1,3 @@
-import { log } from "./lib/log.js";
 import { toast } from "./lib/toast.js";
 import { playChime } from "./lib/sound.js";
 import { addHistory, getHistory } from "./lib/db.js";
@@ -236,8 +235,8 @@ transfer.onSecureTextReceived = (transferId, text, fromId) => {
   showNotification("收到安全文本", `来自 ${peerName}`);
 };
 
-transfer.onSecureTextOffer = (fromId, _transferId, _textPreview) => {
-  log.debug(`安全文本传输请求来自 ${fromId}, 已自动接受`);
+transfer.onSecureTextOffer = (fromId, transferId, textPreview) => {
+  showOfferDialog({ type: "offer-secure-text", from: fromId, transferId, textPreview });
 };
 
 // --- Chat ---
@@ -369,7 +368,7 @@ async function sendFilesToPeer(peerId, files) {
     if (file.size > maxFileSize) continue;
     try {
       const transferId = await transfer.sendFile(peerId, file);
-      addTransferCard(transferId, file.name, file.size, "sender");
+      addTransferCard(transferId, file.name, file.size, "sender", signaling.peers.get(peerId)?.name || "未知设备");
     } catch (e) {
       toast(`${file.name}: ${e.message}`, "error");
     }
@@ -413,13 +412,23 @@ function _showNextOffer() {
   showingOffer = true;
   const msg = offerQueue.shift();
   currentOfferTransferId = msg.transferId;
-  offerTitle.textContent = `${signaling.peers.get(msg.from)?.name || "未知设备"} 想发送文件`;
-  offerFileInfo.textContent = `${msg.fileName} (${formatSize(msg.fileSize)})`;
+  const peerName = signaling.peers.get(msg.from)?.name || "未知设备";
+  const isSecureText = msg.type === "offer-secure-text";
+  offerTitle.textContent = isSecureText
+    ? `${peerName} 想发送安全文本`
+    : `${peerName} 想发送文件`;
+  offerFileInfo.textContent = isSecureText
+    ? msg.textPreview || "(无预览)"
+    : `${msg.fileName} (${formatSize(msg.fileSize)})`;
   offerDialog.showModal();
 
   offerAcceptBtn.onclick = () => {
     signaling.sendAcceptFile(msg.from, msg.transferId);
-    addTransferCard(msg.transferId, msg.fileName, msg.fileSize, "receiver");
+    if (isSecureText) {
+      transfer.acceptSecureText(msg.from, msg.transferId);
+    } else {
+      addTransferCard(msg.transferId, msg.fileName, msg.fileSize, "receiver", peerName);
+    }
     _showNextOffer();
   };
 
@@ -441,8 +450,8 @@ function dismissOffer(transferId) {
 
 // --- Transfer cards ---
 
-function addTransferCard(transferId, fileName, fileSize, role) {
-  transferMeta.set(transferId, { fileName, fileSize, role });
+function addTransferCard(transferId, fileName, fileSize, role, peerName = "未知设备") {
+  transferMeta.set(transferId, { fileName, fileSize, role, peerName });
   noTransfersEl.style.display = "none";
 
   const card = document.createElement("div");
@@ -491,6 +500,7 @@ async function renderHistoryList() {
       return `<div class="history-item ${ok ? "history-success" : "history-error"}">
         <span class="history-status">${ok ? "✓" : "✗"}</span>
         <span class="history-name">${escapeHtml(r.fileName || "")}</span>
+        <span class="history-peer">${escapeHtml(r.peerName || "")}</span>
         <span class="history-size">${formatSize(r.fileSize || 0)}</span>
         <span class="history-time">${time}</span>
       </div>`;
