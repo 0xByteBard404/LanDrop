@@ -14,7 +14,7 @@
   --surface-h: rgba(255, 255, 255, 0.07);
   --border:    rgba(255, 255, 255, 0.06);
   --text:      #e8e4df;
-  --text-dim:  #706b65;
+  --text-dim:  #8a847d;
   --accent:    #e8a030;
   --accent-h:  #f0b848;
   --green:     #4ade80;
@@ -748,6 +748,44 @@ h2 {
 @keyframes scaleIn {
   from { opacity: 0; transform: scale(0.95); }
   to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Accessibility ── */
+
+/* 键盘焦点轮廓（键盘导航可见）*/
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 前庭敏感：禁用滑动/缩放动画与过渡，保留即时反馈（§14 reduced-motion）*/
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 降低透明度：玻璃材质实色化，提升可读性（§14 reduced-transparency）*/
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --surface: rgba(255, 255, 255, 0.1);
+    --surface-h: rgba(255, 255, 255, 0.14);
+    --glass: rgba(255, 255, 255, 0.08);
+    --border: rgba(255, 255, 255, 0.14);
+  }
+  body::before { display: none; }
+}
+
+/* 高对比度：提亮暗淡文字、加强边框（§14 contrast）*/
+@media (prefers-contrast: more) {
+  :root {
+    --text-dim: #b8b3ad;
+    --border: rgba(255, 255, 255, 0.25);
+  }
 }
 
 /* ── Responsive ── */

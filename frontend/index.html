@@ -13,7 +13,7 @@
       <h1>LanDrop</h1>
       <div id="header-actions">
         <div id="self-info"></div>
-        <button id="qr-btn" class="btn-icon" title="二维码">&#x1F4F1;</button>
+        <button id="qr-btn" class="btn-icon" title="二维码" aria-label="显示访问二维码">&#x1F4F1;</button>
       </div>
     </header>
 
@@ -55,7 +55,7 @@
     </main>
 
     <!-- File offer dialog -->
-    <div id="offer-dialog" class="dialog hidden">
+    <div id="offer-dialog" class="dialog hidden" role="dialog" aria-modal="true">
       <div class="dialog-content">
         <h3 id="offer-title">接收文件</h3>
         <p id="offer-file-info"></p>
@@ -67,7 +67,7 @@
     </div>
 
     <!-- Text compose dialog -->
-    <div id="text-compose-dialog" class="dialog hidden">
+    <div id="text-compose-dialog" class="dialog hidden" role="dialog" aria-modal="true">
       <div class="dialog-content">
         <h3 id="text-compose-title">发送文本</h3>
         <label class="secure-toggle">
@@ -84,7 +84,7 @@
     </div>
 
     <!-- Text receive dialog -->
-    <div id="text-receive-dialog" class="dialog hidden">
+    <div id="text-receive-dialog" class="dialog hidden" role="dialog" aria-modal="true">
       <div class="dialog-content">
         <h3 id="text-receive-title">收到文本</h3>
         <pre id="text-receive-content"></pre>
@@ -96,7 +96,7 @@
     </div>
 
     <!-- QR code dialog -->
-    <div id="qr-dialog" class="dialog hidden">
+    <div id="qr-dialog" class="dialog hidden" role="dialog" aria-modal="true">
       <div class="dialog-content">
         <h3>扫码访问</h3>
         <div id="qr-container"></div>
@@ -109,7 +109,7 @@
     </div>
 
     <!-- Media preview dialog -->
-    <div id="preview-dialog" class="dialog hidden">
+    <div id="preview-dialog" class="dialog hidden" role="dialog" aria-modal="true">
       <div class="dialog-content preview-dialog-content">
         <div id="preview-media-container"></div>
         <div class="dialog-actions">

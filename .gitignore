@@ -2,6 +2,8 @@
 /target/
 debug/
 *.pdb
+dist/
+*.tar.gz
 
 # Rust
 **/*.rs.bk

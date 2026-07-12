@@ -426,7 +426,7 @@ function addTransferCard(transferId, fileName, fileSize, role) {
 
   card.innerHTML = `
     <div class="transfer-header">
-      <span class="transfer-filename">${fileName}</span>
+      <span class="transfer-filename">${escapeHtml(fileName)}</span>
       <span class="transfer-size">${formatSize(fileSize)}</span>
     </div>
     <div class="transfer-progress-bar">
