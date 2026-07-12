@@ -35,7 +35,7 @@ impl AppState {
     pub fn get_peer_list(&self, exclude: Option<&NodeId>) -> Vec<NodeInfo> {
         self.nodes
             .iter()
-            .filter(|entry| exclude.map_or(true, |id| entry.key() != id))
+            .filter(|entry| exclude.is_none_or(|id| entry.key() != id))
             .map(|entry| entry.value().info.clone())
             .collect()
     }
@@ -50,7 +50,7 @@ impl AppState {
 
     pub fn broadcast(&self, msg: &str, exclude: Option<&NodeId>) {
         for entry in self.nodes.iter() {
-            if exclude.map_or(true, |id| entry.key() != id) {
+            if exclude.is_none_or(|id| entry.key() != id) {
                 let _ = entry.value().tx.send(msg.to_string());
             }
         }
@@ -198,7 +198,9 @@ mod tests {
         state.nodes.insert("n1".to_string(), entry);
 
         // remove_if with matching session_id succeeds
-        let removed = state.nodes.remove_if(&"n1".to_string(), |_, e| e.session_id == sid);
+        let removed = state
+            .nodes
+            .remove_if(&"n1".to_string(), |_, e| e.session_id == sid);
         assert!(removed.is_some());
         assert_eq!(state.nodes.len(), 0);
     }
@@ -210,7 +212,9 @@ mod tests {
         state.nodes.insert("n1".to_string(), entry);
 
         // remove_if with wrong session_id does nothing
-        let removed = state.nodes.remove_if(&"n1".to_string(), |_, e| e.session_id == "wrong");
+        let removed = state
+            .nodes
+            .remove_if(&"n1".to_string(), |_, e| e.session_id == "wrong");
         assert!(removed.is_none());
         assert_eq!(state.nodes.len(), 1);
     }

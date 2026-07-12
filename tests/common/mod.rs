@@ -1,4 +1,7 @@
+#![allow(dead_code)] // 测试辅助模块：字段/方法跨多个 test binary 共用，未必在每个中都使用
+
 use axum::Router;
+use futures::{SinkExt, StreamExt};
 use lan_drop::node::AppState;
 use lan_drop::signaling;
 use reqwest::Client;
@@ -6,7 +9,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use futures::{SinkExt, StreamExt};
 use tower_http::cors::CorsLayer;
 
 /// Test helper: starts a real axum server on a random port.
@@ -72,7 +74,7 @@ impl TestApp {
         // Wait for server to be ready
         let url = instance.url();
         for _ in 0..50 {
-            if client.get(&format!("{}/health", &url)).send().await.is_ok() {
+            if client.get(format!("{}/health", url)).send().await.is_ok() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;

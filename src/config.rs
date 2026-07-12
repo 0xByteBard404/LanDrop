@@ -52,9 +52,7 @@ impl std::str::FromStr for LogLevel {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let level: tracing::Level = s
-            .parse()
-            .map_err(|_| format!("Invalid log level: {}", s))?;
+        let level: tracing::Level = s.parse().map_err(|_| format!("Invalid log level: {}", s))?;
         Ok(LogLevel(level))
     }
 }
@@ -86,7 +84,9 @@ mod tests {
     #[test]
     fn log_level_from_str_valid() {
         for level_str in &["trace", "debug", "info", "warn", "error"] {
-            let level: LogLevel = level_str.parse().unwrap_or_else(|_| panic!("{} 应为有效级别", level_str));
+            let level: LogLevel = level_str
+                .parse()
+                .unwrap_or_else(|_| panic!("{} 应为有效级别", level_str));
             assert_eq!(level.as_ref(), *level_str);
         }
     }

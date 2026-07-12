@@ -1,3 +1,4 @@
+import { log } from "./lib/log.js";
 import { SignalingClient } from "./signaling.js";
 import { FileTransfer } from "./webrtc.js";
 
@@ -51,7 +52,7 @@ speedLimitSelect.onchange = () => {
 
 // --- Media preview ---
 
-transfer.onMediaPreview = (transferId, fileName, mimeType, fileSize) => {
+transfer.onMediaPreview = (transferId, fileName, mimeType, _fileSize) => {
   const t = transfer.activeTransfers.get(transferId);
   if (!t || !t._blobUrl) return;
   showMediaPreview(t._blobUrl, fileName, mimeType);
@@ -129,8 +130,7 @@ selfInfoEl.addEventListener("click", () => {
   input.placeholder = "输入新名称";
 
   const span = selfInfoEl;
-  const originalHTML = span.innerHTML;
-  span.innerHTML = "";
+  span.replaceChildren();
   span.appendChild(input);
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
@@ -221,8 +221,8 @@ transfer.onSecureTextReceived = (transferId, text, fromId) => {
   showNotification("收到安全文本", `来自 ${peerName}`);
 };
 
-transfer.onSecureTextOffer = (fromId, transferId, textPreview) => {
-  console.log(`安全文本传输请求来自 ${fromId}, 已自动接受`);
+transfer.onSecureTextOffer = (fromId, _transferId, _textPreview) => {
+  log.debug(`安全文本传输请求来自 ${fromId}, 已自动接受`);
 };
 
 // --- Chat ---

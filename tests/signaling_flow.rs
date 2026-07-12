@@ -78,7 +78,8 @@ async fn node_rename_broadcasts_peers() {
     ws1.send_json(&serde_json::json!({
         "type": "rename",
         "name": "NewName"
-    })).await;
+    }))
+    .await;
 
     let msgs = ws2.collect_messages(500).await;
     let peers_msg = msgs.iter().find(|m| m["type"] == "peers");
@@ -105,13 +106,18 @@ async fn chat_message_broadcasts_to_all() {
     ws2.send_json(&serde_json::json!({
         "type": "chat",
         "content": "Hello everyone!"
-    })).await;
+    }))
+    .await;
 
     let msgs1 = ws1.collect_messages(500).await;
     let msgs3 = ws3.collect_messages(500).await;
 
-    assert!(msgs1.iter().any(|m| m["type"] == "chat" && m["content"] == "Hello everyone!"));
-    assert!(msgs3.iter().any(|m| m["type"] == "chat" && m["content"] == "Hello everyone!"));
+    assert!(msgs1
+        .iter()
+        .any(|m| m["type"] == "chat" && m["content"] == "Hello everyone!"));
+    assert!(msgs3
+        .iter()
+        .any(|m| m["type"] == "chat" && m["content"] == "Hello everyone!"));
 }
 
 #[tokio::test]
@@ -151,10 +157,13 @@ async fn file_offer_routed_to_target() {
         "to": ws2.node_id.as_deref().unwrap(),
         "fileName": "test.txt",
         "fileSize": 100
-    })).await;
+    }))
+    .await;
 
     let msgs = ws2.collect_messages(500).await;
-    assert!(msgs.iter().any(|m| m["type"] == "offer-file" && m["fileName"] == "test.txt"));
+    assert!(msgs
+        .iter()
+        .any(|m| m["type"] == "offer-file" && m["fileName"] == "test.txt"));
 }
 
 #[tokio::test]
@@ -168,10 +177,13 @@ async fn file_too_large_rejected() {
         "to": "ghost",
         "fileName": "big.bin",
         "fileSize": 200
-    })).await;
+    }))
+    .await;
 
     let msgs = ws.collect_messages(500).await;
-    assert!(msgs.iter().any(|m| m["type"] == "error" && m["code"] == "file_too_large"));
+    assert!(msgs
+        .iter()
+        .any(|m| m["type"] == "error" && m["code"] == "file_too_large"));
 }
 
 #[tokio::test]
@@ -185,10 +197,13 @@ async fn direct_message_to_unknown_target() {
         "to": "nonexistent",
         "fileName": "test.txt",
         "fileSize": 10
-    })).await;
+    }))
+    .await;
 
     let msgs = ws.collect_messages(500).await;
-    assert!(msgs.iter().any(|m| m["type"] == "error" && m["code"] == "target_not_found"));
+    assert!(msgs
+        .iter()
+        .any(|m| m["type"] == "error" && m["code"] == "target_not_found"));
 }
 
 #[tokio::test]
@@ -207,7 +222,8 @@ async fn from_field_is_force_replaced() {
         "from": "spoofed-id",
         "fileName": "test.txt",
         "fileSize": 10
-    })).await;
+    }))
+    .await;
 
     let msgs = ws2.collect_messages(500).await;
     let offer = msgs.iter().find(|m| m["type"] == "offer-file");

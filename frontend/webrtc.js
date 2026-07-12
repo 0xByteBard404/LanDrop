@@ -1,3 +1,6 @@
+import { log } from "./lib/log.js";
+import { encodeChunk, decodeChunk, findMissingIndices } from "./lib/protocol.js";
+
 const CHUNK_SIZE = 16384; // 16KB
 
 // --- Constants ---
@@ -12,7 +15,6 @@ const VERIFY_POLL_INTERVAL = 100;             // Polling interval during verific
 const PROGRESS_THROTTLE = 250;                // Min ms between progress updates
 const BUFFER_FLUSH_INTERVAL = 50;             // Polling interval for buffer flush (ms)
 const POST_SEND_DELAY = 500;                  // Safety delay before sending complete (ms)
-const WS_PATH = "/ws";                        // WebSocket endpoint path
 
 function uuid() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -94,7 +96,7 @@ function jsSha256(msg) {
 (function() {
   const r = jsSha256(new Uint8Array([0x61, 0x62, 0x63]));
   if (r !== "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
-    console.error("SHA-256 self-test FAILED");
+    log.error("SHA-256 self-test FAILED");
 })();
 
 export class FileTransfer {
@@ -332,12 +334,12 @@ export class FileTransfer {
     // Wait for data channel to open, then send file
     dataChannel.onopen = async () => {
       clearTimeout(timeout);
-      console.log(`[发送] ${transferId.slice(0,8)} 数据通道已打开, 文件=${file.name} 大小=${file.size}`);
+      log.debug(`[发送] ${transferId.slice(0,8)} 数据通道已打开, 文件=${file.name} 大小=${file.size}`);
       await this._sendFileData(transferId);
     };
 
     dataChannel.onerror = (e) => {
-      console.error(`[发送] ${transferId.slice(0,8)} 数据通道错误:`, e);
+      log.error(`[发送] ${transferId.slice(0,8)} 数据通道错误:`, e);
       clearTimeout(timeout);
       if (this.activeTransfers.has(transferId)) {
         this._cleanup(transferId);
@@ -346,14 +348,14 @@ export class FileTransfer {
     };
 
     dataChannel.onclose = () => {
-      console.log(`[发送] ${transferId.slice(0,8)} 数据通道关闭, readyState=${dataChannel.readyState}`);
+      log.debug(`[发送] ${transferId.slice(0,8)} 数据通道关闭, readyState=${dataChannel.readyState}`);
     };
 
     // Handle control messages from receiver
     controlChannel.onopen = () => {
       controlChannel.onmessage = (e) => {
         let msg;
-        try { msg = JSON.parse(e.data); } catch (err) { console.warn("控制通道畸形消息:", err); return; }
+        try { msg = JSON.parse(e.data); } catch (err) { log.warn("控制通道畸形消息:", err); return; }
         this._handleControlMessage(transferId, msg);
       };
     };
@@ -443,7 +445,7 @@ export class FileTransfer {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
 
-    const { file, peerId, controlChannel, dataChannel } = transfer;
+    const { file, controlChannel, dataChannel } = transfer;
     const threshold = BUFFER_THRESHOLD;
 
     try {
@@ -453,7 +455,7 @@ export class FileTransfer {
       transfer._fileBuffer = fileBuffer; // cache for potential retransmission
 
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-      console.log(`[发送] ${transferId.slice(0,8)} 开始发送, 总块数=${totalChunks}, hash=${fileHash.slice(0,16)}`);
+      log.debug(`[发送] ${transferId.slice(0,8)} 开始发送, 总块数=${totalChunks}, hash=${fileHash.slice(0,16)}`);
 
       // Send start message via control channel
       controlChannel.send(
@@ -483,15 +485,11 @@ export class FileTransfer {
         const chunkData = fileBuffer.slice(start, end);
 
         // Prefix with 4-byte chunk index (big-endian)
-        const header = new ArrayBuffer(4);
-        new DataView(header).setUint32(0, i, false);
-        const payload = new Uint8Array(4 + chunkData.byteLength);
-        payload.set(new Uint8Array(header), 0);
-        payload.set(new Uint8Array(chunkData), 4);
+        const payload = encodeChunk(i, chunkData);
 
         // Flow control with timeout
         if (dataChannel.bufferedAmount > threshold) {
-          console.log(`[发送] ${transferId.slice(0,8)} 流控暂停 @块${i}, bufferedAmount=${dataChannel.bufferedAmount}`);
+          log.debug(`[发送] ${transferId.slice(0,8)} 流控暂停 @块${i}, bufferedAmount=${dataChannel.bufferedAmount}`);
           await Promise.race([
             new Promise((resolve) => {
               dataChannel.addEventListener("bufferedamountlow", resolve, { once: true });
@@ -500,7 +498,7 @@ export class FileTransfer {
           ]);
         }
 
-        dataChannel.send(payload.buffer);
+        dataChannel.send(payload);
 
         // Speed limit: throttle if sending too fast
         if (this._speedLimit > 0) {
@@ -525,7 +523,7 @@ export class FileTransfer {
       }
 
       // Wait for all data to be flushed from local buffer
-      console.log(`[发送] ${transferId.slice(0,8)} 所有块已发送, 等待缓冲区清空, bufferedAmount=${dataChannel.bufferedAmount}`);
+      log.debug(`[发送] ${transferId.slice(0,8)} 所有块已发送, 等待缓冲区清空, bufferedAmount=${dataChannel.bufferedAmount}`);
       while (dataChannel.bufferedAmount > 0) {
         if (!this.activeTransfers.has(transferId)) return;
         await new Promise((resolve) => setTimeout(resolve, BUFFER_FLUSH_INTERVAL));
@@ -538,7 +536,7 @@ export class FileTransfer {
 
       // Send complete via control channel
       if (!this.activeTransfers.has(transferId)) return;
-      console.log(`[发送] ${transferId.slice(0,8)} 发送 complete 消息`);
+      log.debug(`[发送] ${transferId.slice(0,8)} 发送 complete 消息`);
       controlChannel.send(
         JSON.stringify({
           type: "complete",
@@ -548,7 +546,7 @@ export class FileTransfer {
       );
 
       transfer.state = "verifying";
-    } catch (e) {
+    } catch {
       // Transfer was cancelled or channel closed — silently ignore
       if (this.activeTransfers.has(transferId)) {
         this._cleanup(transferId);
@@ -607,7 +605,7 @@ export class FileTransfer {
         transfer.controlChannel = channel;
         channel.onmessage = (e) => {
           let msg;
-          try { msg = JSON.parse(e.data); } catch (err) { console.warn("控制通道畸形消息:", err); return; }
+          try { msg = JSON.parse(e.data); } catch (err) { log.warn("控制通道畸形消息:", err); return; }
           this._handleControlMessage(transferId, msg);
         };
         channel.onerror = () => {
@@ -631,7 +629,7 @@ export class FileTransfer {
           }
         };
         channel.onclose = () => {
-          console.log(`[接收] ${transferId.slice(0,8)} 数据通道关闭, 已收=${transfer._receivedCount||'?'} 预期=${transfer.totalChunks||'?'}`);
+          log.debug(`[接收] ${transferId.slice(0,8)} 数据通道关闭, 已收=${transfer._receivedCount||'?'} 预期=${transfer.totalChunks||'?'}`);
         };
       } else if (channel.label === "secure-text") {
         channel.onmessage = (e) => {
@@ -646,7 +644,7 @@ export class FileTransfer {
               setTimeout(() => this._cleanup(transferId), POST_SEND_DELAY);
             }
           } catch (err) {
-            console.error("Secure text receive error:", err);
+            log.error("Secure text receive error:", err);
           }
         };
         channel.onerror = () => {
@@ -672,10 +670,8 @@ export class FileTransfer {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
 
-    const view = new DataView(data);
-    const chunkIndex = view.getUint32(0, false);
     // Copy data instead of creating a view — avoids potential buffer reuse issues
-    const chunkData = new Uint8Array(data.slice(4));
+    const { index: chunkIndex, data: chunkData } = decodeChunk(data);
 
     // Only count new chunks (guard against retransmission duplicates)
     if (!transfer.chunks[chunkIndex]) {
@@ -696,7 +692,7 @@ export class FileTransfer {
     // This is more reliable than waiting for the "complete" control message,
     // since data and control channels are independent SCTP streams with no ordering guarantee.
     if (transfer.totalChunks && received === transfer.totalChunks && !transfer._verifying) {
-      console.log(`[接收] ${transferId.slice(0,8)} 所有 ${received} 块已收到, 自动开始验证`);
+      log.debug(`[接收] ${transferId.slice(0,8)} 所有 ${received} 块已收到, 自动开始验证`);
       transfer._verifying = true;
       this._verifyAndFinish(transferId);
     }
@@ -721,7 +717,7 @@ export class FileTransfer {
         // Fallback: if auto-verify from _handleChunk hasn't fired yet,
         // start verification from the control message
         if (!transfer._verifying) {
-          console.log(`[接收] ${transferId.slice(0,8)} 收到 complete 回退触发, 已收块=${transfer._receivedCount||0}/${transfer.totalChunks||'?'}`);
+          log.debug(`[接收] ${transferId.slice(0,8)} 收到 complete 回退触发, 已收块=${transfer._receivedCount||0}/${transfer.totalChunks||'?'}`);
           transfer._verifying = true;
           transfer.state = "verifying";
           this._verifyAndFinish(transferId);
@@ -736,7 +732,7 @@ export class FileTransfer {
         break;
 
       case "done":
-        console.log(`[发送] ${transferId.slice(0,8)} 收到 done, hashMatch=${msg.hashMatch}`);
+        log.debug(`[发送] ${transferId.slice(0,8)} 收到 done, hashMatch=${msg.hashMatch}`);
         if (msg.hashMatch) {
           if (this.onTransferComplete) this.onTransferComplete(transferId);
         } else {
@@ -748,7 +744,7 @@ export class FileTransfer {
       case "missing":
         // Receiver requests retransmission of specific chunks
         if (transfer && transfer.role === "sender" && msg.indices?.length > 0) {
-          console.log(`[发送] ${transferId.slice(0,8)} 收到重传请求, 缺失块=${msg.indices.length}个`);
+          log.debug(`[发送] ${transferId.slice(0,8)} 收到重传请求, 缺失块=${msg.indices.length}个`);
           this._retransmitChunks(transferId, msg.indices);
         }
         break;
@@ -762,7 +758,7 @@ export class FileTransfer {
     try {
       // If chunks are already complete (auto-verified), skip polling
       const _count = () => transfer._receivedCount || transfer.chunks.filter(Boolean).length;
-      console.log(`[验证] ${transferId.slice(0,8)} 开始验证, 已有块=${_count()}/${transfer.totalChunks}`);
+      log.debug(`[验证] ${transferId.slice(0,8)} 开始验证, 已有块=${_count()}/${transfer.totalChunks}`);
 
       const waitStart = Date.now();
       let lastRetryTime = 0;
@@ -771,7 +767,7 @@ export class FileTransfer {
         const elapsed = Date.now() - waitStart;
         if (elapsed > CHUNK_WAIT_TIMEOUT) {
           const received = _count();
-          console.error(`分块超时: 收到 ${received}/${transfer.totalChunks}`);
+          log.error(`分块超时: 收到 ${received}/${transfer.totalChunks}`);
           if (this.onTransferError) this.onTransferError(transferId, "chunk_timeout");
           this._cleanup(transferId);
           return;
@@ -780,12 +776,9 @@ export class FileTransfer {
         // Periodically request retransmission of missing chunks
         if (Date.now() - lastRetryTime > RETRANSMIT_REQUEST_INTERVAL && transfer.controlChannel) {
           lastRetryTime = Date.now();
-          const missing = [];
-          for (let i = 0; i < transfer.totalChunks; i++) {
-            if (!transfer.chunks[i]) missing.push(i);
-          }
+          const missing = findMissingIndices(transfer.chunks, transfer.totalChunks);
           if (missing.length > 0) {
-            console.log(`[接收] ${transferId.slice(0,8)} 请求重传 ${missing.length} 个块 (索引: ${missing.slice(0,5).join(',')}...)`);
+            log.debug(`[接收] ${transferId.slice(0,8)} 请求重传 ${missing.length} 个块 (索引: ${missing.slice(0,5).join(',')}...)`);
             transfer.controlChannel.send(JSON.stringify({ type: "missing", transferId, indices: missing }));
           }
         }
@@ -801,7 +794,7 @@ export class FileTransfer {
       const computedHash = await sha256Hex(buffer);
 
       const hashMatch = computedHash === transfer.fileHash;
-      console.log(`[验证] ${transferId.slice(0,8)} hash比对: ${hashMatch ? '匹配' : '不匹配'}, 计算=${computedHash.slice(0,16)}, 期望=${transfer.fileHash?.slice(0,16)}`);
+      log.debug(`[验证] ${transferId.slice(0,8)} hash比对: ${hashMatch ? '匹配' : '不匹配'}, 计算=${computedHash.slice(0,16)}, 期望=${transfer.fileHash?.slice(0,16)}`);
 
       // Send done via control channel
       if (transfer.controlChannel) {
@@ -856,21 +849,17 @@ export class FileTransfer {
       const end = Math.min(start + CHUNK_SIZE, fileSize);
       const chunkData = fileBuffer.slice(start, end);
 
-      const header = new ArrayBuffer(4);
-      new DataView(header).setUint32(0, i, false);
-      const payload = new Uint8Array(4 + chunkData.byteLength);
-      payload.set(new Uint8Array(header), 0);
-      payload.set(new Uint8Array(chunkData), 4);
+      const payload = encodeChunk(i, chunkData);
 
       // Simple flow control
       if (transfer.dataChannel.bufferedAmount > BUFFER_THRESHOLD) {
         await new Promise(r => setTimeout(r, VERIFY_POLL_INTERVAL));
       }
 
-      transfer.dataChannel.send(payload.buffer);
+      transfer.dataChannel.send(payload);
     }
 
-    console.log(`[发送] ${transferId.slice(0,8)} 重传完成 ${indices.length} 个块`);
+    log.debug(`[发送] ${transferId.slice(0,8)} 重传完成 ${indices.length} 个块`);
   }
 
   _cleanup(transferId) {

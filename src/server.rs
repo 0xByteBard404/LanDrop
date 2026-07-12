@@ -16,7 +16,9 @@ struct FrontendAssets;
 /// Start the axum server with graceful shutdown support.
 ///
 /// Returns `(lan_url, shutdown_sender, server_task_handle)`.
-pub async fn run_server(config: Config) -> (String, tokio::sync::oneshot::Sender<()>, JoinHandle<()>) {
+pub async fn run_server(
+    config: Config,
+) -> (String, tokio::sync::oneshot::Sender<()>, JoinHandle<()>) {
     let state = AppState::new(
         config.max_file_size_mb * 1024 * 1024,
         config.max_text_size_mb * 1024 * 1024,
@@ -65,9 +67,7 @@ pub fn build_app(state: Arc<AppState>, lan_url: &str) -> axum::Router {
         .route("/ws", axum::routing::get(signaling::ws_handler))
         .route(
             "/health",
-            axum::routing::get(|| async {
-                axum::Json(serde_json::json!({"status": "ok"}))
-            }),
+            axum::routing::get(|| async { axum::Json(serde_json::json!({"status": "ok"})) }),
         )
         .route(
             "/api/info",
@@ -97,12 +97,14 @@ async fn serve_embedded_file(req: axum::extract::Request) -> impl axum::response
     let path = if path.is_empty() { "index.html" } else { path };
 
     // Try exact path first, then path + /index.html
-    let file = FrontendAssets::get(path)
-        .or_else(|| FrontendAssets::get(&format!("{}/index.html", path)));
+    let file =
+        FrontendAssets::get(path).or_else(|| FrontendAssets::get(&format!("{}/index.html", path)));
 
     match file {
         Some(file) => {
-            let mime_type = mime_guess::from_path(path).first_or_octet_stream().to_string();
+            let mime_type = mime_guess::from_path(path)
+                .first_or_octet_stream()
+                .to_string();
             (
                 StatusCode::OK,
                 [(header::CONTENT_TYPE, mime_type)],
@@ -139,9 +141,7 @@ pub fn get_local_ip() -> Option<String> {
         .filter(|iface| {
             !iface.is_loopback()
                 && iface.addr.ip().is_ipv4()
-                && !VIRTUAL_PREFIXES
-                    .iter()
-                    .any(|p| iface.name.starts_with(p))
+                && !VIRTUAL_PREFIXES.iter().any(|p| iface.name.starts_with(p))
         })
         .map(|iface| iface.addr.ip().to_string())
         .next()

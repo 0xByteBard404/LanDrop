@@ -1,0 +1,18 @@
+{
+  "name": "landrop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LanDrop 前端开发工具链（测试 + lint）",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint frontend"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.0.0",
+    "globals": "^17.7.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,13 +1,31 @@
 use rand::seq::SliceRandom;
 
 const ADJECTIVES: &[&str] = &[
-    "橘色", "蓝色", "红色", "绿色", "紫色", "金色", "银色", "粉色", "青色", "橙色",
-    "快乐", "勇敢", "温柔", "聪明", "可爱", "活泼", "安静", "优雅", "憨厚", "机灵",
+    "橘色", "蓝色", "红色", "绿色", "紫色", "金色", "银色", "粉色", "青色", "橙色", "快乐", "勇敢",
+    "温柔", "聪明", "可爱", "活泼", "安静", "优雅", "憨厚", "机灵",
 ];
 
 const ANIMALS: &[&str] = &[
-    "狐狸", "海豚", "熊猫", "兔子", "猫咪", "企鹅", "鹿", "松鼠", "考拉", "水獭",
-    "鹦鹉", "仓鼠", "浣熊", "刺猬", "鲸鱼", "海豹", "天鹅", "蝴蝶", "花栗鼠", "羊驼",
+    "狐狸",
+    "海豚",
+    "熊猫",
+    "兔子",
+    "猫咪",
+    "企鹅",
+    "鹿",
+    "松鼠",
+    "考拉",
+    "水獭",
+    "鹦鹉",
+    "仓鼠",
+    "浣熊",
+    "刺猬",
+    "鲸鱼",
+    "海豹",
+    "天鹅",
+    "蝴蝶",
+    "花栗鼠",
+    "羊驼",
 ];
 
 pub fn generate_name() -> String {
@@ -48,12 +66,14 @@ mod tests {
 
     #[test]
     fn generates_different_names() {
-        let names: std::collections::HashSet<String> = (0..50)
-            .map(|_| generate_name())
-            .collect();
+        let names: std::collections::HashSet<String> = (0..50).map(|_| generate_name()).collect();
         // With 20 adjectives * 20 animals * 99 numbers = 39600 combos,
         // getting 50 unique names out of 50 is virtually guaranteed
-        assert!(names.len() > 10, "应生成多个不同名称，实际 {} 个", names.len());
+        assert!(
+            names.len() > 10,
+            "应生成多个不同名称，实际 {} 个",
+            names.len()
+        );
     }
 
     #[test]

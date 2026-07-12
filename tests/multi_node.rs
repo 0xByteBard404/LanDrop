@@ -43,7 +43,9 @@ async fn same_device_reconnect_session_isolation() {
 
     let mut ws1_old = app.ws_connect_with(None, Some("device-1"), Some(1)).await;
     while let Some(msg) = ws1_old.recv_json().await {
-        if msg["type"] == "joined" { break; }
+        if msg["type"] == "joined" {
+            break;
+        }
     }
 
     let mut ws2 = app.ws_connect().await;
@@ -51,7 +53,9 @@ async fn same_device_reconnect_session_isolation() {
 
     let mut ws1_new = app.ws_connect_with(None, Some("device-1"), Some(1)).await;
     while let Some(msg) = ws1_new.recv_json().await {
-        if msg["type"] == "joined" { break; }
+        if msg["type"] == "joined" {
+            break;
+        }
     }
 
     drop(ws1_old);
@@ -59,7 +63,10 @@ async fn same_device_reconnect_session_isolation() {
     let msgs = ws2.collect_messages(1000).await;
 
     let peers_msgs: Vec<_> = msgs.iter().filter(|m| m["type"] == "peers").collect();
-    assert!(!peers_msgs.is_empty(), "should receive peers update after reconnect");
+    assert!(
+        !peers_msgs.is_empty(),
+        "should receive peers update after reconnect"
+    );
 
     assert_eq!(app.state.nodes.len(), 2);
 }
@@ -106,14 +113,19 @@ async fn message_between_specific_peers() {
         "type": "send-text",
         "to": ws2.node_id.as_deref().unwrap(),
         "content": "private message"
-    })).await;
+    }))
+    .await;
 
     let msgs2 = ws2.collect_messages(500).await;
-    assert!(msgs2.iter().any(|m| m["type"] == "send-text" && m["content"] == "private message"));
+    assert!(msgs2
+        .iter()
+        .any(|m| m["type"] == "send-text" && m["content"] == "private message"));
 
     let msgs3 = ws3.collect_messages(300).await;
     assert!(
-        !msgs3.iter().any(|m| m["type"] == "send-text" && m["content"] == "private message"),
+        !msgs3
+            .iter()
+            .any(|m| m["type"] == "send-text" && m["content"] == "private message"),
         "ws3 should not receive direct message between ws1 and ws2"
     );
 }

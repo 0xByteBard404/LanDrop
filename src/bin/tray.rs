@@ -27,13 +27,17 @@ fn main() {
         .ok();
     if let Some(file) = log_file {
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::new(config.log_level.as_ref()))
+            .with_env_filter(tracing_subscriber::EnvFilter::new(
+                config.log_level.as_ref(),
+            ))
             .with_writer(std::sync::Mutex::new(file))
             .init();
     } else {
         // 最终兜底：stderr（Windows GUI 子系统下可能无效，但避免完全无日志）
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::new(config.log_level.as_ref()))
+            .with_env_filter(tracing_subscriber::EnvFilter::new(
+                config.log_level.as_ref(),
+            ))
             .init();
     }
 
@@ -41,8 +45,7 @@ fn main() {
 
     // Create tokio runtime and start server
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-    let (lan_url, shutdown_tx, server_handle) =
-        rt.block_on(lan_drop::server::run_server(config));
+    let (lan_url, shutdown_tx, server_handle) = rt.block_on(lan_drop::server::run_server(config));
 
     tracing::info!("服务已启动: {}", lan_url);
 

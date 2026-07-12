@@ -94,7 +94,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         return;
     }
 
-    let node_id = join.node_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let node_id = join
+        .node_id
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let name = join.name.unwrap_or_else(crate::name_gen::generate_name);
     let session_id = uuid::Uuid::new_v4().to_string();
 
@@ -129,7 +131,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         id: node_id.clone(),
         name: name.clone(),
     };
-    state.nodes.insert(node_id.clone(), NodeEntry { info, tx, session_id: session_id.clone() });
+    state.nodes.insert(
+        node_id.clone(),
+        NodeEntry {
+            info,
+            tx,
+            session_id: session_id.clone(),
+        },
+    );
 
     tracing::info!(node_id = %node_id, online_count = state.nodes.len(), "注册完成，当前在线节点: {:?}", state.nodes.iter().map(|e| e.key().clone()).collect::<Vec<_>>());
 
@@ -220,7 +229,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
 
     // 8. Cleanup on disconnect (only if this session still owns the entry)
-    let removed = state.nodes.remove_if(&node_id, |_, entry| entry.session_id == session_id);
+    let removed = state
+        .nodes
+        .remove_if(&node_id, |_, entry| entry.session_id == session_id);
     if removed.is_some() {
         tracing::info!(node_id = %node_id, name = %name, "节点离线");
 
@@ -457,7 +468,10 @@ mod tests {
         state.nodes.insert("sender".to_string(), sender_entry);
 
         let long_text = "a".repeat(20);
-        let msg = &format!(r#"{{"type":"send-text","to":"target","content":"{}"}}"#, long_text);
+        let msg = &format!(
+            r#"{{"type":"send-text","to":"target","content":"{}"}}"#,
+            long_text
+        );
         route_message(&state, &"sender".to_string(), msg).await;
 
         let err_msg = sender_rx.try_recv().unwrap();

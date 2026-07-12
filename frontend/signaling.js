@@ -1,3 +1,5 @@
+import { log } from "./lib/log.js";
+
 const STORAGE_KEY = "landrop_identity";
 const WS_PATH = "/ws";
 const RECONNECT_BASE_DELAY = 1000;
@@ -64,7 +66,7 @@ export class SignalingClient {
       try {
         msg = JSON.parse(event.data);
       } catch (e) {
-        console.warn("收到畸形信令消息，已忽略:", e);
+        log.warn("收到畸形信令消息，已忽略:", e);
         return;
       }
       // 心跳响应：更新心跳时间戳，不进入业务处理
@@ -101,7 +103,7 @@ export class SignalingClient {
       this._send({ type: "ping" });
       // 长时间未收到 pong，视为连接已死，主动断连以触发重连
       if (Date.now() - this._lastPongAt > HEARTBEAT_TIMEOUT) {
-        console.warn("信令心跳超时，主动断连以触发重连");
+        log.warn("信令心跳超时，主动断连以触发重连");
         this.ws.close();
       }
     }, HEARTBEAT_INTERVAL);
