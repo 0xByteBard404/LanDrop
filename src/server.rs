@@ -29,6 +29,7 @@ pub async fn run_server(
     let state = AppState::new(
         config.max_file_size_mb * 1024 * 1024,
         config.max_text_size_mb * 1024 * 1024,
+        config.ice_servers.clone(),
     );
 
     let local_ip = get_local_ip();
@@ -87,6 +88,7 @@ pub fn build_app(state: Arc<AppState>, lan_url: &str) -> axum::Router {
                         "maxTextSize": state.max_text_size,
                         "protocolVersion": signaling::PROTOCOL_VERSION,
                         "maxNameLength": signaling::MAX_NAME_LENGTH,
+                        "iceServers": state.ice_servers,
                     }))
                 }
             }),

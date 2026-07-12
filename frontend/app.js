@@ -1,10 +1,13 @@
 import { log } from "./lib/log.js";
 import { toast } from "./lib/toast.js";
+import { playChime } from "./lib/sound.js";
+import { addHistory, getHistory } from "./lib/db.js";
 import { SignalingClient } from "./signaling.js";
 import { FileTransfer } from "./webrtc.js";
 
 const signaling = new SignalingClient();
 const transfer = new FileTransfer(signaling);
+const transferMeta = new Map(); // transferId -> { fileName, fileSize, role }
 
 // --- DOM refs ---
 
@@ -193,6 +196,12 @@ transfer.onProgress = (transferId, current, total) => {
 transfer.onTransferComplete = (transferId) => {
   updateTransferStatus(transferId, "传输完成", "success");
   showNotification("传输完成", "文件已成功传输");
+  playChime();
+  const meta = transferMeta.get(transferId);
+  if (meta) {
+    addHistory({ ...meta, status: "success" });
+    renderHistoryList();
+  }
 };
 
 transfer.onTransferError = (transferId, error) => {
@@ -211,6 +220,11 @@ transfer.onTransferError = (transferId, error) => {
   };
   updateTransferStatus(transferId, messages[error] || `传输失败: ${error}`, "error");
   dismissOffer(transferId);
+  const meta = transferMeta.get(transferId);
+  if (meta) {
+    addHistory({ ...meta, status: "error", error });
+    renderHistoryList();
+  }
 };
 
 transfer.onSecureTextReceived = (transferId, text, fromId) => {
@@ -297,9 +311,15 @@ function renderPeers(peers) {
     textBtn.textContent = "发送文本";
     textBtn.onclick = () => openTextCompose(id, peer.name);
 
+    const folderBtn = document.createElement("button");
+    folderBtn.className = "btn-text-link";
+    folderBtn.textContent = "发送文件夹";
+    folderBtn.onclick = () => selectAndSend(id, true);
+
     const btnGroup = document.createElement("div");
     btnGroup.className = "peer-actions";
     btnGroup.appendChild(textBtn);
+    btnGroup.appendChild(folderBtn);
     btnGroup.appendChild(sendBtn);
 
     card.appendChild(nameSpan);
@@ -356,10 +376,13 @@ async function sendFilesToPeer(peerId, files) {
   }
 }
 
-async function selectAndSend(peerId) {
+async function selectAndSend(peerId, directory = false) {
   const input = document.createElement("input");
   input.type = "file";
   input.multiple = true;
+  if (directory) {
+    input.setAttribute("webkitdirectory", "");
+  }
   input.onchange = async () => {
     const files = input.files;
     if (!files || files.length === 0) return;
@@ -419,6 +442,7 @@ function dismissOffer(transferId) {
 // --- Transfer cards ---
 
 function addTransferCard(transferId, fileName, fileSize, role) {
+  transferMeta.set(transferId, { fileName, fileSize, role });
   noTransfersEl.style.display = "none";
 
   const card = document.createElement("div");
@@ -444,6 +468,34 @@ function addTransferCard(transferId, fileName, fileSize, role) {
   };
 
   transfersListEl.appendChild(card);
+}
+
+async function renderHistoryList() {
+  const el = document.getElementById("history-list");
+  if (!el) return;
+  const history = await getHistory();
+  if (history.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = history
+    .slice(0, 20)
+    .map((r) => {
+      const time = new Date(r.timestamp).toLocaleString("zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const ok = r.status === "success";
+      return `<div class="history-item ${ok ? "history-success" : "history-error"}">
+        <span class="history-status">${ok ? "✓" : "✗"}</span>
+        <span class="history-name">${escapeHtml(r.fileName || "")}</span>
+        <span class="history-size">${formatSize(r.fileSize || 0)}</span>
+        <span class="history-time">${time}</span>
+      </div>`;
+    })
+    .join("");
 }
 
 function updateTransferProgress(transferId, current, total) {
@@ -673,6 +725,7 @@ async function init() {
       maxTextSize: data.maxTextSize,
       protocolVersion: data.protocolVersion,
       maxNameLength: data.maxNameLength,
+      iceServers: data.iceServers ? JSON.parse(data.iceServers) : [],
     };
   } catch {
     // Fallback defaults
@@ -681,8 +734,10 @@ async function init() {
       maxTextSize: 1024 * 1024,
       protocolVersion: 1,
       maxNameLength: 32,
+      iceServers: [],
     };
   }
   signaling.connect();
+  renderHistoryList();
 }
 init();

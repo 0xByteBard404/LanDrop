@@ -204,6 +204,54 @@ h2 {
   opacity: 0.8;
 }
 
+/* ── History ── */
+.history-section {
+  margin-top: 24px;
+}
+.history-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  letter-spacing: 0.3px;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  margin-bottom: 4px;
+}
+.history-status {
+  font-weight: 600;
+  width: 16px;
+  text-align: center;
+}
+.history-success .history-status {
+  color: var(--green);
+}
+.history-error .history-status {
+  color: var(--red);
+}
+.history-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-size {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.history-time {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 /* ── Peer cards ── */
 
 #peers-section {

@@ -394,7 +394,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_message_valid() {
-        let state = AppState::new(1024 * 1024, 1024);
+        let state = AppState::new(1024 * 1024, 1024, "[]".to_string());
         let (entry, mut rx) = make_node("target", "Cat");
         state.nodes.insert("target".to_string(), entry);
 
@@ -410,7 +410,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_message_force_replaces_from() {
-        let state = AppState::new(1024 * 1024, 1024);
+        let state = AppState::new(1024 * 1024, 1024, "[]".to_string());
         let (entry, mut rx) = make_node("target", "Cat");
         state.nodes.insert("target".to_string(), entry);
 
@@ -425,7 +425,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_message_invalid_json_ignored() {
-        let state = AppState::new(1024 * 1024, 1024);
+        let state = AppState::new(1024 * 1024, 1024, "[]".to_string());
         let (entry, mut rx) = make_node("target", "Cat");
         state.nodes.insert("target".to_string(), entry);
 
@@ -435,7 +435,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_message_no_to_field_ignored() {
-        let state = AppState::new(1024 * 1024, 1024);
+        let state = AppState::new(1024 * 1024, 1024, "[]".to_string());
         let (entry, mut rx) = make_node("target", "Cat");
         state.nodes.insert("target".to_string(), entry);
 
@@ -446,7 +446,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_message_file_too_large() {
-        let state = AppState::new(100, 1024); // max file 100 bytes
+        let state = AppState::new(100, 1024, "[]".to_string()); // max file 100 bytes
         let (sender_entry, mut sender_rx) = make_node("sender", "Fox");
         state.nodes.insert("sender".to_string(), sender_entry);
 
@@ -463,7 +463,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_message_text_too_long() {
-        let state = AppState::new(1024 * 1024, 10); // max text 10 bytes
+        let state = AppState::new(1024 * 1024, 10, "[]".to_string()); // max text 10 bytes
         let (sender_entry, mut sender_rx) = make_node("sender", "Fox");
         state.nodes.insert("sender".to_string(), sender_entry);
 
@@ -482,7 +482,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_message_target_not_found() {
-        let state = AppState::new(1024 * 1024, 1024);
+        let state = AppState::new(1024 * 1024, 1024, "[]".to_string());
         let (sender_entry, mut sender_rx) = make_node("sender", "Fox");
         state.nodes.insert("sender".to_string(), sender_entry);
 
@@ -497,7 +497,7 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_peers_sends_to_all_except_excluded() {
-        let state = AppState::new(1024 * 1024, 1024);
+        let state = AppState::new(1024 * 1024, 1024, "[]".to_string());
         let (e1, mut rx1) = make_node("n1", "Fox");
         let (e2, mut rx2) = make_node("n2", "Cat");
         let (e3, mut rx3) = make_node("n3", "Dog");

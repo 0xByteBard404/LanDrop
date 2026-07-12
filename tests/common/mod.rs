@@ -25,7 +25,7 @@ impl TestApp {
     }
 
     pub async fn start_with_limits(max_file_size: u64, max_text_size: u64) -> Self {
-        let state = AppState::new(max_file_size, max_text_size);
+        let state = AppState::new(max_file_size, max_text_size, "[]".to_string());
         let state_clone = state.clone();
 
         let app = Router::new()

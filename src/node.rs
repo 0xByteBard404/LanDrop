@@ -21,14 +21,16 @@ pub struct AppState {
     pub nodes: DashMap<NodeId, NodeEntry>,
     pub max_file_size: u64,
     pub max_text_size: u64,
+    pub ice_servers: String,
 }
 
 impl AppState {
-    pub fn new(max_file_size: u64, max_text_size: u64) -> Arc<Self> {
+    pub fn new(max_file_size: u64, max_text_size: u64, ice_servers: String) -> Arc<Self> {
         Arc::new(Self {
             nodes: DashMap::new(),
             max_file_size,
             max_text_size,
+            ice_servers,
         })
     }
 
@@ -76,20 +78,20 @@ mod tests {
 
     #[test]
     fn new_app_state_has_no_nodes() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         assert_eq!(state.nodes.len(), 0);
     }
 
     #[test]
     fn get_peer_list_empty() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let list = state.get_peer_list(None);
         assert!(list.is_empty());
     }
 
     #[test]
     fn add_node_and_get_peer_list() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let (entry, _rx) = make_node("n1", "Fox");
         state.nodes.insert("n1".to_string(), entry);
 
@@ -101,7 +103,7 @@ mod tests {
 
     #[test]
     fn get_peer_list_exclude_self() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let (e1, _) = make_node("n1", "Fox");
         let (e2, _) = make_node("n2", "Cat");
         state.nodes.insert("n1".to_string(), e1);
@@ -114,7 +116,7 @@ mod tests {
 
     #[test]
     fn send_to_existing_node() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let (entry, mut rx) = make_node("n1", "Fox");
         state.nodes.insert("n1".to_string(), entry);
 
@@ -125,13 +127,13 @@ mod tests {
 
     #[test]
     fn send_to_nonexistent_node() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         assert!(!state.send_to(&"ghost".to_string(), "hello"));
     }
 
     #[test]
     fn broadcast_to_all() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let (e1, mut rx1) = make_node("n1", "Fox");
         let (e2, mut rx2) = make_node("n2", "Cat");
         state.nodes.insert("n1".to_string(), e1);
@@ -144,7 +146,7 @@ mod tests {
 
     #[test]
     fn broadcast_exclude_one() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let (e1, mut rx1) = make_node("n1", "Fox");
         let (e2, mut rx2) = make_node("n2", "Cat");
         state.nodes.insert("n1".to_string(), e1);
@@ -157,7 +159,7 @@ mod tests {
 
     #[test]
     fn remove_node() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let (entry, _) = make_node("n1", "Fox");
         state.nodes.insert("n1".to_string(), entry);
         assert_eq!(state.nodes.len(), 1);
@@ -170,7 +172,7 @@ mod tests {
 
     #[test]
     fn session_id_isolation() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
 
         // First session
         let (e1, _) = make_node("n1", "Fox");
@@ -192,7 +194,7 @@ mod tests {
 
     #[test]
     fn remove_if_session_matches() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let (entry, _) = make_node("n1", "Fox");
         let sid = entry.session_id.clone();
         state.nodes.insert("n1".to_string(), entry);
@@ -207,7 +209,7 @@ mod tests {
 
     #[test]
     fn remove_if_session_mismatch() {
-        let state = AppState::new(1024, 1024);
+        let state = AppState::new(1024, 1024, "[]".to_string());
         let (entry, _) = make_node("n1", "Fox");
         state.nodes.insert("n1".to_string(), entry);
 

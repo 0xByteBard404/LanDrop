@@ -4,7 +4,6 @@ import { encodeChunk, decodeChunk, findMissingIndices } from "./lib/protocol.js"
 const CHUNK_SIZE = 65536; // 64KB（SCTP 消息上限内，减少分块数）
 
 // --- Constants ---
-const ICE_SERVERS = [];                       // STUN/TURN servers (LAN-only by default)
 const ICE_TIMEOUT_FILE = 30000;               // ICE timeout for file transfers (ms)
 const ICE_TIMEOUT_TEXT = 15000;               // ICE timeout for secure text (ms)
 const BUFFER_THRESHOLD = 1024 * 1024;         // Flow control buffer threshold (1MB)
@@ -285,7 +284,7 @@ export class FileTransfer {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: this.signaling.config?.iceServers ?? [] });
     transfer.pc = pc;
     transfer.state = "connecting";
 
@@ -380,7 +379,7 @@ export class FileTransfer {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: this.signaling.config?.iceServers ?? [] });
     transfer.pc = pc;
     transfer.state = "connecting";
 
@@ -557,7 +556,7 @@ export class FileTransfer {
   // --- Receiver: handle incoming SDP offer ---
 
   async _handleSdpOffer(fromId, transferId, sdpStr) {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: this.signaling.config?.iceServers ?? [] });
 
     // Store for ICE candidate buffering before remote description is set
     const transfer = this.activeTransfers.get(transferId) || {};

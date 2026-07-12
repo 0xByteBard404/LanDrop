@@ -124,6 +124,7 @@ export class SignalingClient {
         // Update config from server
         if (msg.maxFileSize != null) {
           this.config = {
+            ...this.config,
             maxFileSize: msg.maxFileSize,
             maxTextSize: msg.maxTextSize,
             protocolVersion: msg.protocolVersion,

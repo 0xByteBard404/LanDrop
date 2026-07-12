@@ -19,6 +19,10 @@ pub struct Config {
     /// 文本消息大小上限 MB
     #[arg(short = 't', long, default_value = "1")]
     pub max_text_size_mb: u64,
+
+    /// ICE servers (STUN/TURN) JSON 数组，如 [{"urls":"stun:stun.l.google.com:19302"}]。默认空（纯局域网）
+    #[arg(long, default_value = "[]")]
+    pub ice_servers: String,
 }
 
 #[derive(Clone)]
