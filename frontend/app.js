@@ -1,4 +1,5 @@
 import { log } from "./lib/log.js";
+import { toast } from "./lib/toast.js";
 import { SignalingClient } from "./signaling.js";
 import { FileTransfer } from "./webrtc.js";
 
@@ -78,11 +79,11 @@ function showMediaPreview(blobUrl, fileName, mimeType) {
     a.download = fileName;
     a.click();
   };
-  previewDialog.classList.remove("hidden");
+  previewDialog.showModal();
 }
 
 previewCloseBtn.onclick = () => {
-  previewDialog.classList.add("hidden");
+  previewDialog.close();
 };
 
 // --- Browser notifications ---
@@ -171,7 +172,7 @@ signaling.onOfferFile = (msg) => {
 
 signaling.onMessage = (msg) => {
   if (msg.type === "error" && msg.code === "text_too_long") {
-    alert(`文本超过 ${formatSize(signaling.config?.maxTextSize ?? 0)} 限制`);
+    toast(`文本超过 ${formatSize(signaling.config?.maxTextSize ?? 0)} 限制`, "error");
     return;
   }
   transfer.handleSignalingMessage(msg);
@@ -217,7 +218,7 @@ transfer.onSecureTextReceived = (transferId, text, fromId) => {
   addMessageCard(transferId, text, "receiver", peerName, true);
   textReceiveTitle.textContent = `来自 ${peerName} 的文本 (安全)`;
   textReceiveContent.textContent = text;
-  textReceiveDialog.classList.remove("hidden");
+  textReceiveDialog.showModal();
   showNotification("收到安全文本", `来自 ${peerName}`);
 };
 
@@ -341,7 +342,7 @@ async function sendFilesToPeer(peerId, files) {
   const tooLarge = fileArr.filter((f) => f.size > maxFileSize);
   if (tooLarge.length > 0) {
     const names = tooLarge.map((f) => f.name).join("\n");
-    alert(`以下文件超过 ${formatSize(maxFileSize)} 单文件限制，已跳过：\n${names}`);
+    toast(`以下文件超过 ${formatSize(maxFileSize)} 单文件限制，已跳过：\n${names}`, "error");
   }
 
   for (const file of fileArr) {
@@ -350,7 +351,7 @@ async function sendFilesToPeer(peerId, files) {
       const transferId = await transfer.sendFile(peerId, file);
       addTransferCard(transferId, file.name, file.size, "sender");
     } catch (e) {
-      alert(`${file.name}: ${e.message}`);
+      toast(`${file.name}: ${e.message}`, "error");
     }
   }
 }
@@ -383,7 +384,7 @@ function _showNextOffer() {
   if (offerQueue.length === 0) {
     showingOffer = false;
     currentOfferTransferId = null;
-    offerDialog.classList.add("hidden");
+    offerDialog.close();
     return;
   }
   showingOffer = true;
@@ -391,7 +392,7 @@ function _showNextOffer() {
   currentOfferTransferId = msg.transferId;
   offerTitle.textContent = `${signaling.peers.get(msg.from)?.name || "未知设备"} 想发送文件`;
   offerFileInfo.textContent = `${msg.fileName} (${formatSize(msg.fileSize)})`;
-  offerDialog.classList.remove("hidden");
+  offerDialog.showModal();
 
   offerAcceptBtn.onclick = () => {
     signaling.sendAcceptFile(msg.from, msg.transferId);
@@ -487,12 +488,12 @@ function openTextCompose(peerId, peerName) {
   textComposeSecure.checked = false;
   textComposeSecure.disabled = false;
   secureHint.textContent = "";
-  textComposeDialog.classList.remove("hidden");
+  textComposeDialog.showModal();
   setTimeout(() => textComposeInput.focus(), 50);
 }
 
 textComposeCancelBtn.onclick = () => {
-  textComposeDialog.classList.add("hidden");
+  textComposeDialog.close();
   textComposeTargetId = null;
 };
 
@@ -510,7 +511,7 @@ textComposeSendBtn.onclick = async () => {
   // Size-check in bytes to match the server's UTF-8 byte limit, not JS char count.
   const contentBytes = new Blob([content]).size;
   if (contentBytes > maxTextSize) {
-    alert(`文本超过 ${formatSize(maxTextSize)} 限制`);
+    toast(`文本超过 ${formatSize(maxTextSize)} 限制`, "error");
     return;
   }
 
@@ -523,7 +524,7 @@ textComposeSendBtn.onclick = async () => {
       await transfer.sendSecureText(textComposeTargetId, content);
       addMessageCard(textId, content, "sender", peerName, true);
     } catch (e) {
-      alert("安全传输失败: " + e.message);
+      toast("安全传输失败: " + e.message, "error");
       return;
     }
   } else {
@@ -531,7 +532,7 @@ textComposeSendBtn.onclick = async () => {
     addMessageCard(textId, content, "sender", peerName, false);
   }
 
-  textComposeDialog.classList.add("hidden");
+  textComposeDialog.close();
   textComposeTargetId = null;
 };
 
@@ -541,7 +542,7 @@ async function showReceivedText(msg) {
 
   textReceiveTitle.textContent = `来自 ${peerName} 的文本`;
   textReceiveContent.textContent = msg.content;
-  textReceiveDialog.classList.remove("hidden");
+  textReceiveDialog.showModal();
 }
 
 textReceiveCopyBtn.onclick = async () => {
@@ -564,7 +565,7 @@ textReceiveCopyBtn.onclick = async () => {
 };
 
 textReceiveCloseBtn.onclick = () => {
-  textReceiveDialog.classList.add("hidden");
+  textReceiveDialog.close();
 };
 
 function addMessageCard(textId, content, role, peerName, encrypted = false) {
@@ -591,7 +592,7 @@ function addMessageCard(textId, content, role, peerName, encrypted = false) {
     textReceiveContent.textContent = content;
     textReceiveTitle.textContent = (role === "sender" ? "发给 " : "来自 ") + peerName + (encrypted ? " (安全)" : "");
     textReceiveCopyBtn.textContent = "复制";
-    textReceiveDialog.classList.remove("hidden");
+    textReceiveDialog.showModal();
   };
 
   messagesListEl.prepend(card);
@@ -636,11 +637,11 @@ qrBtn.onclick = async () => {
   } catch {
     qrUrlEl.textContent = location.href;
   }
-  qrDialog.classList.remove("hidden");
+  qrDialog.showModal();
 };
 
 qrCloseBtn.onclick = () => {
-  qrDialog.classList.add("hidden");
+  qrDialog.close();
 };
 
 qrCopyBtn.onclick = async () => {

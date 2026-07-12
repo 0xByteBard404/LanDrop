@@ -21,7 +21,7 @@
       <section id="peers-section">
         <h2>在线设备</h2>
         <div id="peers-list"></div>
-        <p id="no-peers" class="hint">等待其他设备连接...</p>
+        <p id="no-peers" class="hint">等待其他设备连接…<br><span class="hint-tip">点右上角 📱 生成二维码，其他设备扫码即可加入</span></p>
       </section>
 
       <section id="transfer-section">
@@ -55,7 +55,7 @@
     </main>
 
     <!-- File offer dialog -->
-    <div id="offer-dialog" class="dialog hidden" role="dialog" aria-modal="true">
+    <dialog id="offer-dialog" class="dialog">
       <div class="dialog-content">
         <h3 id="offer-title">接收文件</h3>
         <p id="offer-file-info"></p>
@@ -64,10 +64,10 @@
           <button id="offer-accept" class="btn btn-primary">接收</button>
         </div>
       </div>
-    </div>
+    </dialog>
 
     <!-- Text compose dialog -->
-    <div id="text-compose-dialog" class="dialog hidden" role="dialog" aria-modal="true">
+    <dialog id="text-compose-dialog" class="dialog">
       <div class="dialog-content">
         <h3 id="text-compose-title">发送文本</h3>
         <label class="secure-toggle">
@@ -81,10 +81,10 @@
           <button id="text-compose-send" class="btn btn-primary">发送</button>
         </div>
       </div>
-    </div>
+    </dialog>
 
     <!-- Text receive dialog -->
-    <div id="text-receive-dialog" class="dialog hidden" role="dialog" aria-modal="true">
+    <dialog id="text-receive-dialog" class="dialog">
       <div class="dialog-content">
         <h3 id="text-receive-title">收到文本</h3>
         <pre id="text-receive-content"></pre>
@@ -93,10 +93,10 @@
           <button id="text-receive-copy" class="btn btn-primary">复制</button>
         </div>
       </div>
-    </div>
+    </dialog>
 
     <!-- QR code dialog -->
-    <div id="qr-dialog" class="dialog hidden" role="dialog" aria-modal="true">
+    <dialog id="qr-dialog" class="dialog">
       <div class="dialog-content">
         <h3>扫码访问</h3>
         <div id="qr-container"></div>
@@ -106,10 +106,10 @@
           <button id="qr-close" class="btn btn-primary">关闭</button>
         </div>
       </div>
-    </div>
+    </dialog>
 
     <!-- Media preview dialog -->
-    <div id="preview-dialog" class="dialog hidden" role="dialog" aria-modal="true">
+    <dialog id="preview-dialog" class="dialog">
       <div class="dialog-content preview-dialog-content">
         <div id="preview-media-container"></div>
         <div class="dialog-actions">
@@ -117,7 +117,7 @@
           <button id="preview-close" class="btn btn-primary">关闭</button>
         </div>
       </div>
-    </div>
+    </dialog>
   </div>
 
   <script src="lib/qrcode.min.js"></script>
